@@ -3,13 +3,44 @@
 <head th:fragment="head(title)">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${title} + ' · configstream-admin'">configstream-admin</title>
+    <title th:text="${title} + ' · configstream admin'">configstream admin</title>
     <link rel="stylesheet" th:href="@{/configstream-admin/admin.css}">
+    <link rel="icon" th:href="@{/configstream-admin/logo.svg}" type="image/svg+xml">
+    <script th:src="@{/configstream-admin/admin.js}" defer></script>
 </head>
 <body>
-<header th:fragment="header">
-    <a class="brand" th:href="@{__${configStreamAdminBase}__/}">configstream-admin</a>
-    <span class="badge" title="Login and access control arrive in a later release">no login: trusted networks only</span>
+<header th:fragment="header" class="cs-header">
+    <a class="cs-brand" th:href="@{__${configStreamAdminBase}__/}">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+            <rect width="28" height="28" rx="7" fill="#0a6f6a"/>
+            <path d="M6 10c3-3 5 3 8 0s5-3 8 0M6 15c3-3 5 3 8 0s5-3 8 0M6 20c3-3 5 3 8 0s5-3 8 0"
+                  stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <span class="cs-brand-name">configstream</span>
+        <span class="cs-brand-sub">admin</span>
+    </a>
+    <div class="cs-spacer"></div>
+    <span class="cs-nologin" title="Login and access control arrive in a later release">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
+        <span>No login: trusted networks only</span>
+    </span>
 </header>
+
+<!--/* Banners: the flash notice after a change, and error messages */-->
+<div th:fragment="notice" th:if="${notice}" class="cs-banner success" role="status">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+    <span th:text="${notice}">Updated 'limits.max' (v3).</span>
+</div>
+
+<div th:fragment="error(message)" class="cs-banner error" role="alert">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/></svg>
+    <span th:text="${message}">Could not reach any instance.</span>
+</div>
+
+<svg th:fragment="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
 </body>
 </html>

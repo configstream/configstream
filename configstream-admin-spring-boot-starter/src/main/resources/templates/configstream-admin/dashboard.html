@@ -1,31 +1,36 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{configstream-admin/layout :: head('Services')}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
-<main>
-    <h1>Services</h1>
+<main class="cs-main">
+    <div>
+        <h1>Services</h1>
+        <p class="cs-lead">Pick a service to view and change its live config.</p>
+    </div>
 
-    <p class="empty" th:if="${services.isEmpty()}">
-        No services registered yet. Set <code>configstream.admin.url</code> on a service to point at this app.
-    </p>
+    <div class="cs-note" th:if="${services.isEmpty()}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span>No services registered yet. Set <code>configstream.admin.url</code> on a service to point at this app.</span>
+    </div>
 
-    <table th:unless="${services.isEmpty()}">
-        <thead>
-        <tr><th>Service</th><th>Team</th><th>Instances up</th><th>Last heartbeat</th></tr>
-        </thead>
-        <tbody>
-        <tr th:each="s : ${services}">
-            <td><a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${s.serviceName()})}" th:text="${s.serviceName()}">orders</a></td>
-            <td th:text="${s.team() ?: '—'}">team-a</td>
-            <td>
-                <span th:class="${s.upCount() == 0 ? 'status down' : (s.upCount() < s.instances().size() ? 'status partial' : 'status up')}"
-                      th:text="${s.upCount()} + ' / ' + ${s.instances().size()}">2 / 2</span>
-            </td>
-            <td th:text="${@configStreamAdminTime.ago(s.lastHeartbeat())}">5s ago</td>
-        </tr>
-        </tbody>
-    </table>
+    <div class="cs-cards" th:unless="${services.isEmpty()}">
+        <a class="cs-card" th:each="s : ${services}"
+           th:href="@{__${configStreamAdminBase}__/services/{name}(name=${s.serviceName()})}">
+            <div class="cs-card-body">
+                <div class="cs-title">
+                    <span class="cs-card-name" th:text="${s.serviceName()}">orders</span>
+                    <span class="cs-chip" th:if="${s.team()}" th:text="${s.team()}">team-a</span>
+                </div>
+                <span th:with="n=${s.activeCount()}" th:class="${n == 0 ? 'cs-card-count none' : 'cs-card-count'}"
+                      th:text="${n == 0 ? 'No active instances: config can''t be changed right now'
+                              : (n == 1 ? '1 active instance' : n + ' active instances')}">2 active instances</span>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </a>
+    </div>
 </main>
 </body>
 </html>

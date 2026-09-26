@@ -1,54 +1,72 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{configstream-admin/layout :: head(${service.serviceName()})}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
-<main>
-    <p class="crumbs"><a th:href="@{__${configStreamAdminBase}__/}">Services</a> /</p>
-    <p class="notice" th:if="${notice}" th:text="${notice}">Updated 'limits.max' (v3).</p>
-    <h1 th:text="${service.serviceName()}">orders</h1>
-    <p class="meta" th:if="${service.team()}">Team: <span th:text="${service.team()}">team-a</span></p>
+<main class="cs-main">
+    <nav class="cs-crumbs" aria-label="Breadcrumb">
+        <a th:href="@{__${configStreamAdminBase}__/}">Services</a><span class="sep">/</span><span th:text="${service.serviceName()}">orders</span>
+    </nav>
+    <div th:replace="~{configstream-admin/layout :: notice}"></div>
 
-    <h2>Instances</h2>
-    <table>
-        <thead>
-        <tr><th>Status</th><th>Instance</th><th>Address</th><th>Last heartbeat</th><th>Registered</th></tr>
-        </thead>
-        <tbody>
-        <tr th:each="i : ${service.instances()}">
-            <td><span th:class="${i.up() ? 'status up' : 'status down'}" th:text="${i.up() ? 'UP' : 'DOWN'}">UP</span></td>
-            <td><code th:text="${i.instanceId()}">orders-1</code></td>
-            <td th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</td>
-            <td th:text="${@configStreamAdminTime.ago(i.lastHeartbeat())}">5s ago</td>
-            <td th:text="${@configStreamAdminTime.timestamp(i.registeredAt())}">2026-09-25 10:00:00 UTC</td>
-        </tr>
-        </tbody>
-    </table>
-
-    <div class="section-head">
-        <h2>Current config</h2>
-        <a class="button" th:if="${config}" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">Add entry</a>
+    <div class="cs-title" th:with="n=${service.activeCount()}">
+        <h1 th:text="${service.serviceName()}">orders</h1>
+        <span class="cs-chip" th:if="${service.team()}" th:text="${service.team()}">team-a</span>
+        <span class="cs-muted" th:text="${n == 1 ? '1 active instance' : n + ' active instances'}">2 active instances</span>
     </div>
-    <p class="error" th:if="${configError}" th:text="${configError}">Could not reach any instance.</p>
-    <th:block th:if="${config}">
-        <p class="empty" th:if="${config.isEmpty()}">This service has no config entries.</p>
-        <table th:unless="${config.isEmpty()}">
-            <thead>
-            <tr><th>Key</th><th>Value</th><th></th></tr>
-            </thead>
-            <tbody>
-            <tr th:each="entry : ${config}">
-                <td><code th:text="${entry.key}">feature.x.enabled</code></td>
-                <td class="value" th:text="${entry.value}">true</td>
-                <td class="links">
-                    <a th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${entry.key})}">Edit</a>
-                    <a th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${service.serviceName()}, key=${entry.key})}">History</a>
-                    <a class="danger-link" th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()}, key=${entry.key})}">Delete</a>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-    </th:block>
+
+    <section class="cs-panel" th:unless="${service.activeInstances().isEmpty()}">
+        <div class="cs-panel-head"><h2>Active instances</h2></div>
+        <div class="cs-row instances" th:each="i : ${service.activeInstances()}">
+            <code class="cs-muted" th:text="${i.instanceId()}">orders-1</code>
+            <span th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</span>
+            <span class="cs-muted" th:text="'Heartbeat ' + ${@configStreamAdminTime.ago(i.lastHeartbeat())}">Heartbeat 5s ago</span>
+            <span class="cs-muted" th:title="${@configStreamAdminTime.timestamp(i.registeredAt())}"
+                  th:text="'Registered ' + ${@configStreamAdminTime.ago(i.registeredAt())}">Registered 12m ago</span>
+        </div>
+    </section>
+
+    <th:block th:if="${configError}"><div th:replace="~{configstream-admin/layout :: error(${configError})}"></div></th:block>
+
+    <section class="cs-panel" th:if="${config}">
+        <div class="cs-panel-head">
+            <h2>Config</h2>
+            <span class="cs-muted" data-cs-count th:text="${config.size() == 1 ? '1 key' : config.size() + ' keys'}">4 keys</span>
+            <div class="cs-spacer"></div>
+            <label class="cs-search" hidden th:unless="${config.isEmpty()}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" placeholder="Filter keys" aria-label="Filter keys" data-cs-filter autocomplete="off">
+            </label>
+            <a class="cs-button primary" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add entry</a>
+        </div>
+        <p class="cs-empty" th:if="${config.isEmpty()}">This service has no config entries yet.</p>
+        <th:block th:unless="${config.isEmpty()}">
+            <div class="cs-row config head"><span>Key</span><span>Value</span><span></span></div>
+            <div class="cs-row config" th:each="entry : ${config}" th:attr="data-cs-key=${entry.key}">
+                <code class="cs-key" th:text="${entry.key}">feature.x.enabled</code>
+                <span th:with="lower=${entry.value == null ? '' : #strings.toLowerCase(#strings.trim(entry.value))}">
+                    <span th:if="${lower == 'true' or lower == 'false'}" th:class="${lower == 'true' ? 'cs-bool on' : 'cs-bool'}"
+                          th:text="${entry.value}">true</span>
+                    <span th:unless="${lower == 'true' or lower == 'false'}" class="cs-value" th:text="${entry.value}">200</span>
+                </span>
+                <span class="cs-actions">
+                    <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${entry.key})}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Edit</a>
+                    <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${service.serviceName()}, key=${entry.key})}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>History</a>
+                    <a class="cs-act danger" th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()}, key=${entry.key})}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</a>
+                </span>
+            </div>
+            <p class="cs-empty" data-cs-nomatch hidden>No keys match the filter.</p>
+        </th:block>
+    </section>
 </main>
 </body>
 </html>

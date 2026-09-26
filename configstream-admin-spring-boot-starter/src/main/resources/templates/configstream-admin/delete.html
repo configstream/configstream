@@ -1,41 +1,45 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{configstream-admin/layout :: head('Delete ' + ${form.key()} + ' · ' + ${service.serviceName()})}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
-<main>
-    <p class="crumbs">
-        <a th:href="@{__${configStreamAdminBase}__/}">Services</a> /
-        <a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a> /
-    </p>
-    <h1>Delete <code th:text="${form.key()}">feature.x.enabled</code>?</h1>
-    <p class="error" th:each="e : ${errors}" th:text="${e}">Could not reach any instance.</p>
+<main class="cs-main narrow">
+    <nav class="cs-crumbs" aria-label="Breadcrumb">
+        <a th:href="@{__${configStreamAdminBase}__/}">Services</a><span class="sep">/</span><a
+            th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a><span
+            class="sep">/</span>Delete
+    </nav>
 
-    <table class="review">
-        <tbody>
-        <tr><th>Service</th><td th:text="${service.serviceName()}">orders</td></tr>
-        <tr><th>Key</th><td><code th:text="${form.key()}">feature.x.enabled</code></td></tr>
-        <tr th:if="${current != null}"><th>Current value</th><td class="value" th:text="${current}">true</td></tr>
-        </tbody>
-    </table>
+    <th:block th:each="e : ${errors}"><div th:replace="~{configstream-admin/layout :: error(${e})}"></div></th:block>
 
-    <p>
-        The key is removed from every instance of <strong th:text="${service.serviceName()}">orders</strong>
-        within about a second, so code reading it falls back to its default. Its history is kept, and you can
-        restore it from the history page.
-    </p>
+    <div>
+        <h1>Delete <code th:text="${form.key()}">feature.x.enabled</code>?</h1>
+        <p class="cs-lead">The key is removed from every instance of <strong th:text="${service.serviceName()}">orders</strong>
+            within about a second, so code reading it falls back to its default. Its history is kept, and you can
+            restore it from the history page.</p>
+    </div>
 
-    <form class="edit" method="post" th:action="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()})}">
+    <form class="cs-panel cs-form" method="post"
+          th:action="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()})}">
+        <dl class="cs-details" style="border-top: 0; padding-top: 0">
+            <dt>Service</dt><dd th:text="${service.serviceName()}">orders</dd>
+            <dt>Key</dt><dd><code class="cs-key" th:text="${form.key()}">feature.x.enabled</code></dd>
+            <th:block th:if="${current != null}">
+                <dt>Current value</dt><dd><span class="cs-value" th:text="${current}">true</span></dd>
+            </th:block>
+        </dl>
         <input type="hidden" name="key" th:value="${form.key()}">
-        <label>Your name
+        <label class="cs-field">Your name
             <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
         </label>
-        <label>Comment <span class="meta">(optional, recorded in the history)</span>
+        <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>
             <input name="comment" th:value="${form.comment()}" autocomplete="off">
         </label>
-        <div class="actions">
-            <button type="submit" class="danger">Delete key</button>
-            <a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
+        <div class="cs-buttons">
+            <button type="submit" class="cs-button danger large">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete key</button>
+            <a class="cs-button large" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
         </div>
     </form>
 </main>

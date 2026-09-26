@@ -1,68 +1,96 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{configstream-admin/layout :: head(${form.key() ?: 'New entry'} + ' · ' + ${service.serviceName()})}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
-<main>
-    <p class="crumbs">
-        <a th:href="@{__${configStreamAdminBase}__/}">Services</a> /
-        <a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a> /
-    </p>
+<main class="cs-main narrow">
+    <nav class="cs-crumbs" aria-label="Breadcrumb">
+        <a th:href="@{__${configStreamAdminBase}__/}">Services</a><span class="sep">/</span><a
+            th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a><span
+            class="sep">/</span><span th:text="${review ? 'Review change' : (current != null ? 'Edit entry' : 'New entry')}">Edit entry</span>
+    </nav>
+
+    <ol class="cs-steps" aria-label="Steps">
+        <li th:class="${review} ? 'done'" th:attr="aria-current=${review ? null : 'step'}">
+            <span class="cs-step-num" th:text="${review ? '✓' : '1'}">1</span>Edit</li>
+        <li class="line" aria-hidden="true"></li>
+        <li th:attr="aria-current=${review ? 'step' : null}"><span class="cs-step-num">2</span>Review</li>
+        <li class="line" aria-hidden="true"></li>
+        <li><span class="cs-step-num">3</span>Applied</li>
+    </ol>
+
+    <th:block th:each="e : ${errors}"><div th:replace="~{configstream-admin/layout :: error(${e})}"></div></th:block>
 
     <th:block th:unless="${review}">
-        <h1 th:text="${current != null ? 'Edit entry' : 'New entry'}">Edit entry</h1>
-        <p class="error" th:each="e : ${errors}" th:text="${e}">Key is required.</p>
+        <div>
+            <h1 th:text="${current != null ? 'Edit entry' : 'New entry'}">Edit entry</h1>
+            <p class="cs-lead">You review the change before anything is written.</p>
+        </div>
 
-        <form class="edit" method="post" th:action="@{__${configStreamAdminBase}__/services/{name}/edit/review(name=${service.serviceName()})}">
-            <label>Key
-                <input name="key" th:value="${form.key()}" th:readonly="${current != null}" required
+        <form class="cs-panel cs-form" method="post"
+              th:action="@{__${configStreamAdminBase}__/services/{name}/edit/review(name=${service.serviceName()})}">
+            <label class="cs-field">Key
+                <input class="mono" name="key" th:value="${form.key()}" th:readonly="${current != null}" required
                        autocomplete="off" spellcheck="false">
             </label>
-            <p class="meta" th:if="${current != null}">
-                Current value: <code class="value" th:text="${current}">false</code>
+            <p class="cs-muted" th:if="${current != null}">
+                Current value: <span class="cs-value" th:text="${current}">false</span>
             </p>
-            <label>Value
+            <label class="cs-field">Value
                 <textarea name="value" rows="4" spellcheck="false" th:text="${form.value()}">true</textarea>
             </label>
-            <label>Your name
+            <label class="cs-field">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
             </label>
-            <label>Comment <span class="meta">(optional, recorded in the history)</span>
+            <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>
                 <input name="comment" th:value="${form.comment()}" autocomplete="off">
             </label>
-            <div class="actions">
-                <button type="submit" class="primary">Review change</button>
-                <a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
+            <div class="cs-buttons">
+                <button type="submit" class="cs-button primary large">Review change</button>
+                <a class="cs-button large" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
             </div>
         </form>
     </th:block>
 
     <th:block th:if="${review}">
-        <h1>Confirm change</h1>
-        <p>This change applies to every instance of
-            <strong th:text="${service.serviceName()}">orders</strong> within about a second.</p>
+        <div>
+            <h1>Review change</h1>
+            <p class="cs-lead">Nothing is written until you apply. The change reaches every instance of
+                <strong th:text="${service.serviceName()}">orders</strong> within about a second.</p>
+        </div>
 
-        <table class="review">
-            <tbody>
-            <tr><th>Key</th><td><code th:text="${form.key()}">feature.x.enabled</code></td></tr>
-            <tr><th>Current value</th>
-                <td class="value" th:if="${current != null}" th:text="${current}">false</td>
-                <td class="meta" th:if="${current == null}">(not set: this creates the key)</td></tr>
-            <tr><th>New value</th><td class="value new" th:text="${form.value()}">true</td></tr>
-            <tr><th>Changed by</th><td th:text="${form.changedBy()}">alice</td></tr>
-            <tr><th>Comment</th><td th:text="${form.comment() ?: '—'}">launch</td></tr>
-            </tbody>
-        </table>
+        <section class="cs-panel cs-form">
+            <p><span class="cs-muted">Key</span>&nbsp; <code class="cs-key" th:text="${form.key()}">limits.max</code></p>
+            <div class="cs-compare">
+                <div class="cs-side old">
+                    <div class="cs-side-label">Current</div>
+                    <span class="cs-side-value" th:if="${current != null}" th:text="${current}">150</span>
+                    <span class="cs-side-value none" th:if="${current == null}">Not set: this creates the key</span>
+                </div>
+                <div class="arrow"><svg th:replace="~{configstream-admin/layout :: arrow}"></svg></div>
+                <div class="cs-side new">
+                    <div class="cs-side-label">New</div>
+                    <span class="cs-side-value" th:text="${form.value()}">200</span>
+                </div>
+            </div>
+            <dl class="cs-details">
+                <dt>Changed by</dt><dd th:text="${form.changedBy()}">alice</dd>
+                <dt>Comment</dt><dd th:text="${form.comment() ?: '—'}">Raise for the weekend sale</dd>
+            </dl>
+        </section>
 
-        <form class="edit" method="post" th:action="@{__${configStreamAdminBase}__/services/{name}/update(name=${service.serviceName()})}">
+        <form method="post" th:action="@{__${configStreamAdminBase}__/services/{name}/update(name=${service.serviceName()})}">
             <input type="hidden" name="key" th:value="${form.key()}">
             <input type="hidden" name="value" th:value="${form.value()}">
             <input type="hidden" name="changedBy" th:value="${form.changedBy()}">
             <input type="hidden" name="comment" th:value="${form.comment()}">
-            <div class="actions">
-                <button type="submit" class="primary">Apply change</button>
-                <button type="submit" formmethod="get"
-                        th:formaction="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">Back</button>
+            <div class="cs-buttons">
+                <button type="submit" class="cs-button primary large">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Apply change</button>
+                <button type="submit" class="cs-button large" formmethod="get"
+                        th:formaction="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()})}">Back to edit</button>
+                <a class="cs-muted" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
             </div>
         </form>
     </th:block>

@@ -73,13 +73,13 @@ class ConfigStreamAdminEndToEndIT {
 
         try (ConfigurableApplicationContext service = startService()) {
             await().atMost(Duration.ofSeconds(10))
-                    .until(() -> registry.service("orders").map(s -> s.upCount() == 1).orElse(false));
+                    .until(() -> registry.service("orders").map(s -> s.activeCount() == 1).orElse(false));
             String serviceUrl = "http://localhost:" + service.getEnvironment().getProperty("local.server.port");
             updateThroughService(serviceUrl, "limits.max", "50");
 
-            assertThat(getHtml(adminUrl + "/")).contains("href=\"/services/orders\"", "team-a", "1 / 1");
+            assertThat(getHtml(adminUrl + "/")).contains("href=\"/services/orders\"", "team-a", "1 active instance");
             await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> assertThat(getHtml(adminUrl + "/services/orders"))
-                    .contains(">UP<", "feature.x.enabled", "limits.max", "50")
+                    .contains("Active instances", "feature.x.enabled", "limits.max", "50")
                     .doesNotContain("class=\"error\""));
             assertThat(getHtml(adminUrl + "/services/orders/history?key=limits.max"))
                     .contains("v1", "alice", "(created)", "launch");
@@ -101,14 +101,14 @@ class ConfigStreamAdminEndToEndIT {
         try (ConfigurableApplicationContext first = startService("payments");
              ConfigurableApplicationContext second = startService("payments")) {
             await().atMost(Duration.ofSeconds(10))
-                    .until(() -> registry.service("payments").map(s -> s.upCount() == 2).orElse(false));
+                    .until(() -> registry.service("payments").map(s -> s.activeCount() == 2).orElse(false));
             List<String> instanceUrls = List.of(urlOf(first), urlOf(second));
 
             // Review first: nothing is written until the change is applied
             assertThat(postForm("/services/payments/edit/review", Map.of(
                     "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic")))
                     .satisfies(r -> assertThat(r.statusCode()).isEqualTo(200))
-                    .satisfies(r -> assertThat(r.body()).contains("Confirm change", "this creates the key"));
+                    .satisfies(r -> assertThat(r.body()).contains("<h1>Review change</h1>", "this creates the key"));
 
             HttpResponse<String> applied = postForm("/services/payments/update", Map.of(
                     "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic"));

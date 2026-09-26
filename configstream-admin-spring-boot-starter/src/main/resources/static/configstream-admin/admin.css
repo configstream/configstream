@@ -69,7 +69,8 @@ p { margin: 0; }
     align-items: center;
     gap: 16px;
     height: 60px;
-    padding: 0 48px;
+    /* Keeps the header contents in line with the centred page column below (1184px wide, 48px padding) */
+    padding: 0 max(48px, calc((100% - 1088px) / 2));
     background: var(--header);
     color: var(--header-text);
 }
@@ -99,6 +100,7 @@ p { margin: 0; }
     flex-direction: column;
     gap: 22px;
     max-width: 1184px;
+    margin: 0 auto;
     padding: 28px 48px 48px;
 }
 
@@ -242,7 +244,7 @@ p { margin: 0; }
 
 /* Service cards */
 
-.cs-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+.cs-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
 
 .cs-card {
     display: flex;

@@ -163,6 +163,16 @@ docker compose up -d        # local single-node Mongo replica set
 mvn verify                  # build + unit + integration tests
 ```
 
+`samples/` holds two runnable apps for trying it by hand (not published): `demo-admin`, an admin server on port 8090,
+and `demo-service`, an `orders` service on port 8081 whose `GET /demo` shows live values. To use a MongoDB other than
+`localhost:27017` (e.g. Atlas), set the `CONFIGSTREAM_MONGO_URI` environment variable.
+
+```bash
+java -jar samples/demo-admin/target/demo-admin-0.1.0-SNAPSHOT.jar
+java -jar samples/demo-service/target/demo-service-0.1.0-SNAPSHOT.jar                     # :8081
+java -jar samples/demo-service/target/demo-service-0.1.0-SNAPSHOT.jar --server.port=8082   # second instance
+```
+
 ## License
 
 Apache License 2.0

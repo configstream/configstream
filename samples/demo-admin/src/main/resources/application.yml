@@ -1,0 +1,14 @@
+server:
+  port: 8090
+  servlet:
+    session:
+      tracking-modes: cookie
+
+spring:
+  application:
+    name: demo-admin
+
+configstream:
+  admin-server:
+    # Must match configstream.internal.secret in demo-service. Local testing only: never reuse it.
+    default-service-secret: local-dev-secret-123456

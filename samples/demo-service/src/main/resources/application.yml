@@ -1,0 +1,19 @@
+server:
+  port: 8081    # start a second instance with --server.port=8082
+
+spring:
+  application:
+    name: orders
+
+configstream:
+  team: team-a
+  mongo:
+    # Set the CONFIGSTREAM_MONGO_URI environment variable to use another MongoDB (e.g. Atlas),
+    # so passwords stay out of this file.
+    uri: mongodb://localhost:27017/?replicaSet=rs0
+    database: orders
+  internal:
+    # Must match the admin server's default-service-secret. Local testing only: never reuse it.
+    secret: local-dev-secret-123456
+  admin:
+    url: http://localhost:8090

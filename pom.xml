@@ -43,6 +43,9 @@
         <!-- Admin server as a starter: add it to any Spring Boot app, plus @EnableConfigStreamAdminServer -->
         <module>configstream-admin-spring-boot-starter</module>
         <!-- configstream-postgres will be added here in v2 -->
+        <!-- Runnable sample apps for local testing; not published -->
+        <module>samples/demo-admin</module>
+        <module>samples/demo-service</module>
     </modules>
 
     <properties>

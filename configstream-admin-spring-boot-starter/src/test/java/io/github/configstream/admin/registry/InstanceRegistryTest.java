@@ -35,10 +35,21 @@ class InstanceRegistryTest {
 
         clock.advance(Duration.ofSeconds(1));
         assertThat(onlyInstance().up()).isFalse();
-        assertThat(registry.service("orders").orElseThrow().upCount()).isZero();
+        assertThat(registry.service("orders").orElseThrow().activeCount()).isZero();
 
         assertThat(registry.heartbeat("o-1")).isTrue();
         assertThat(onlyInstance().up()).isTrue();
+    }
+
+    @Test
+    void activeInstancesLeaveOutThoseThatStoppedHeartbeating() {
+        registry.register(instance("orders", "a-stale"));
+        clock.advance(Duration.ofMinutes(1));
+        registry.register(instance("orders", "b-fresh"));
+
+        ServiceSummary orders = registry.service("orders").orElseThrow();
+        assertThat(orders.activeInstances()).extracting(RegisteredInstance::instanceId).containsExactly("b-fresh");
+        assertThat(orders.activeCount()).isEqualTo(1);
     }
 
     @Test

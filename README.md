@@ -101,7 +101,7 @@ configstream:
 ## Admin server
 
 The admin server is the app services register with (`configstream.admin.url`). It shows every registered service, its
-live instances (up/down from heartbeats), its current config and each key's change history, and lets you add, edit,
+active instances (those sending heartbeats), its current config and each key's change history, and lets you add, edit,
 delete and restore entries. Deploy one per environment.
 
 Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer` does:

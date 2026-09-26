@@ -1,43 +1,62 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{configstream-admin/layout :: head(${key} + ' history')}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
-<main>
-    <p class="crumbs">
-        <a th:href="@{__${configStreamAdminBase}__/}">Services</a> /
-        <a th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a> /
-    </p>
-    <h1><code th:text="${key}">feature.x.enabled</code></h1>
+<main class="cs-main narrow">
+    <nav class="cs-crumbs" aria-label="Breadcrumb">
+        <a th:href="@{__${configStreamAdminBase}__/}">Services</a><span class="sep">/</span><a
+            th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a><span
+            class="sep">/</span>History
+    </nav>
 
-    <p class="error" th:if="${historyError}" th:text="${historyError}">Could not reach any instance.</p>
+    <div class="cs-title">
+        <h1 style="flex-grow: 1"><code th:text="${key}">limits.max</code></h1>
+        <a class="cs-button" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key})}">Edit value</a>
+    </div>
+
+    <th:block th:if="${historyError}"><div th:replace="~{configstream-admin/layout :: error(${historyError})}"></div></th:block>
+
     <th:block th:if="${entries}">
-        <p class="empty" th:if="${entries.isEmpty()}">
-            No recorded changes. Changes made directly in the database are not recorded in history.
-        </p>
-        <table th:unless="${entries.isEmpty()}">
-            <thead>
-            <tr><th>Version</th><th>When</th><th>By</th><th>Old value</th><th>New value</th><th>Comment</th><th></th></tr>
-            </thead>
-            <tbody>
-            <tr th:each="e, row : ${entries}">
-                <td th:text="'v' + ${e.version()}">v2</td>
-                <td th:text="${@configStreamAdminTime.timestamp(e.changedAt())}">2026-09-25 10:00:00 UTC</td>
-                <td th:text="${e.changedBy()}">alice</td>
-                <td class="value" th:text="${e.oldValue() ?: '(created)'}">false</td>
-                <td class="value" th:text="${e.newValue() ?: '(deleted)'}">true</td>
-                <td th:text="${e.comment() ?: ''}">launch</td>
-                <td class="links">
-                    <!--/* Restoring goes through the normal edit and review steps. The first row is the current value, unless it is a deletion */-->
-                    <a th:if="${!e.deleted() and !row.first}"
-                       th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.newValue()}, comment='Reverted to v' + ${e.version()})}">Restore</a>
-                    <a th:if="${e.deleted() and row.first}"
-                       th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.oldValue()}, comment='Restored after deletion in v' + ${e.version()})}">Restore</a>
-                </td>
-            </tr>
-            </tbody>
-        </table>
+        <p class="cs-muted" th:if="${entries.isEmpty()}">No recorded changes yet.</p>
+        <!--/* Restoring goes through the normal edit and review steps. The first entry is the current value, unless it is a deletion */-->
+        <ol class="cs-timeline" th:unless="${entries.isEmpty()}">
+            <li th:each="e, row : ${entries}" th:class="${row.first} ? 'cs-event current' : 'cs-event'">
+                <div class="cs-event-rail"><span class="cs-version" th:text="'v' + ${e.version()}">v2</span></div>
+                <div class="cs-event-card">
+                    <div class="cs-event-head">
+                        <span class="cs-event-who" th:text="${e.changedBy()}">alice</span>
+                        <span class="cs-muted" th:title="${@configStreamAdminTime.timestamp(e.changedAt())}"
+                              th:text="${@configStreamAdminTime.ago(e.changedAt())}">2m ago</span>
+                        <span class="cs-tag deleted" th:if="${e.deleted()}">Deleted</span>
+                        <span class="cs-tag" th:if="${row.first and !e.deleted()}">Current</span>
+                        <span class="cs-spacer"></span>
+                        <a class="cs-act" th:if="${!e.deleted() and !row.first}"
+                           th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.newValue()}, comment='Reverted to v' + ${e.version()})}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg>Restore</a>
+                        <a class="cs-act" th:if="${e.deleted() and row.first}"
+                           th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.oldValue()}, comment='Restored after deletion in v' + ${e.version()})}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg>Restore</a>
+                    </div>
+                    <div class="cs-change">
+                        <span th:class="${e.oldValue() == null} ? 'old none' : 'old'" th:text="${e.oldValue() ?: '(created)'}">150</span>
+                        <svg th:replace="~{configstream-admin/layout :: arrow}"></svg>
+                        <span th:class="${e.newValue() == null} ? 'new none' : 'new'" th:text="${e.newValue() ?: '(deleted)'}">200</span>
+                    </div>
+                    <p class="cs-comment" th:if="${e.comment()}" th:text="${e.comment()}">Raise for the weekend sale</p>
+                </div>
+            </li>
+        </ol>
     </th:block>
+
+    <div class="cs-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span>Only changes made through configstream are recorded. Edits made directly in the database still reach every
+            instance, but do not appear here.</span>
+    </div>
 </main>
 </body>
 </html>

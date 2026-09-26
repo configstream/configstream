@@ -80,7 +80,7 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("href=\"/services/orders\""),
                         containsString("href=\"/services/billing\""),
-                        containsString("2 / 2"),
+                        containsString("2 active instances"),
                         containsString("team-a"),
                         not(containsString("No services registered yet")))));
     }
@@ -96,7 +96,7 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("o-1"),
                         containsString("http://localhost:8080"),
-                        containsString(">UP<"),
+                        containsString("Active instances"),
                         containsString("feature.x.enabled"),
                         containsString("limits.max"),
                         containsString("/services/orders/history?key=limits.max"))));
@@ -177,7 +177,7 @@ class ConfigStreamAdminServerTest {
                         .param("comment", "more traffic"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(
-                        containsString("Confirm change"),
+                        containsString("<h1>Review change</h1>"),
                         containsString(">50<"),
                         containsString(">75<"),
                         containsString("more traffic"),
@@ -205,12 +205,12 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("Key is required."),
                         containsString("Enter your name"),
-                        not(containsString("Confirm change")))));
+                        not(containsString("<h1>Review change</h1>")))));
         mvc.perform(post("/services/orders/edit/review")
                         .param("key", "limits.max").param("value", "50").param("changedBy", "alice"))
                 .andExpect(content().string(allOf(
                         containsString("already has this value"),
-                        not(containsString("Confirm change")))));
+                        not(containsString("<h1>Review change</h1>")))));
     }
 
     @Test

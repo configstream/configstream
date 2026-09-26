@@ -24,7 +24,7 @@ import org.springframework.web.client.RestClientException;
 
 /**
  * Calls a service's configstream internal endpoints ({@code /internal/config/**}). Every instance
- * of a service reads and writes the same store, so any healthy instance can answer: instances are
+ * of a service reads and writes the same store, so any active instance can answer: instances are
  * tried in turn until one responds.
  */
 public class ServiceClient {
@@ -46,7 +46,7 @@ public class ServiceClient {
         this.properties = properties;
     }
 
-    /** Current values as one healthy instance sees them, sorted by key. */
+    /** Current values as one active instance sees them, sorted by key. */
     public Map<String, String> currentConfig(String serviceName) {
         return call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config")
@@ -98,7 +98,7 @@ public class ServiceClient {
     }
 
     /**
-     * Tries each healthy instance in turn. Reads fail over on any error; writes only when the request
+     * Tries each active instance in turn. Reads fail over on any error; writes only when the request
      * never reached the instance, because after a timeout or server error the change may already be
      * committed, and retrying elsewhere would report it as "nothing changed".
      */
@@ -110,13 +110,13 @@ public class ServiceClient {
             throw new ServiceCallException("No secret configured for '" + serviceName + "'. Set configstream.admin-server.service-secrets."
                     + serviceName + " (or configstream.admin-server.default-service-secret) to its configstream.internal.secret.");
         }
-        List<String> baseUrls = service.instances().stream()
-                .filter(RegisteredInstance::up)
+        List<String> baseUrls = service.activeInstances().stream()
                 .map(RegisteredInstance::baseUrl)
                 .filter(url -> url != null)
                 .toList();
         if (baseUrls.isEmpty()) {
-            throw new ServiceCallException("No healthy instance of '" + serviceName + "' with a reachable address.");
+            throw new ServiceCallException("No active instance of '" + serviceName + "' with a reachable address, so its "
+                    + "config can't be viewed or changed until one is running.");
         }
         RestClientException lastFailure = null;
         for (String baseUrl : baseUrls) {

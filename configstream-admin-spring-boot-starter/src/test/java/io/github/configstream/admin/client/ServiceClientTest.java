@@ -206,7 +206,7 @@ class ServiceClientTest {
 
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", null, null));
         assertThatThrownBy(() -> client.currentConfig("orders"))
-                .hasMessageContaining("No healthy instance of 'orders' with a reachable address");
+                .hasMessageContaining("No active instance of 'orders' with a reachable address");
     }
 
     /**

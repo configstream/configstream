@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * One immutable record of a change made through a {@link ConfigWriter}.
  *
- * @param key       the config key
+ * @param key       the property key
  * @param version   per-key version this change produced, starting at 1
  * @param oldValue  the value before the change, or {@code null} if the key was created
  * @param newValue  the value after the change, or {@code null} if the key was deleted

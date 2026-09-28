@@ -10,6 +10,7 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,13 +47,16 @@ public class ServiceClient {
         this.properties = properties;
     }
 
-    /** Current values as one active instance sees them, sorted by key. */
+    /** Current values as text, as one active instance sees them, sorted by key. */
     public Map<String, String> currentConfig(String serviceName) {
-        return call(serviceName, (baseUrl, secret) -> http.get()
+        Map<String, PropertyView> properties = call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config")
                 .header(SECRET_HEADER, secret)
                 .retrieve()
-                .body(new ParameterizedTypeReference<Map<String, String>>() {}));
+                .body(new ParameterizedTypeReference<Map<String, PropertyView>>() {}));
+        Map<String, String> values = new TreeMap<>();
+        properties.forEach((key, property) -> values.put(key, property.value()));
+        return values;
     }
 
     /** Changes to {@code key}, newest first. */
@@ -75,9 +79,9 @@ public class ServiceClient {
     }
 
     /**
-     * Soft-deletes {@code key} through the service.
+     * Deletes {@code key} through the service; the service refuses keys it declares in its manifest.
      *
-     * @return the recorded history entry, or empty if the key had no value (already deleted)
+     * @return the recorded history entry, or empty if the key doesn't exist
      */
     public Optional<ConfigHistoryEntry> delete(String serviceName, String key, String changedBy, String comment) {
         return write(serviceName, "/internal/config/delete", new DeleteRequest(key, changedBy, comment));
@@ -127,13 +131,15 @@ public class ServiceClient {
                     // Every instance shares the secret, so trying the others won't help
                     throw new ServiceCallException("'" + serviceName + "' rejected the configured secret.", e);
                 }
-                if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                // The service explains a rejected change, e.g. a value that doesn't fit the property's type
+                String reason = errorMessage(e);
+                if (e.getStatusCode() == HttpStatus.NOT_FOUND && reason == null) {
                     throw new ServiceCallException("'" + serviceName + "' does not expose the configstream internal "
                             + "endpoints. Is configstream.internal.secret set on the service?", e);
                 }
                 // Any other 4xx: the request itself was rejected, and every instance would reject it too
-                throw new ServiceCallException("'" + serviceName + "' rejected the request: " + e.getStatusText()
-                        + " (" + e.getStatusCode().value() + ").", e);
+                throw new ServiceCallException("'" + serviceName + "' rejected the request: " + (reason != null ? reason
+                        : e.getStatusText() + " (" + e.getStatusCode().value() + ")."), e);
             } catch (RestClientException e) {
                 if (isWrite && !neverReachedInstance(e)) {
                     throw new ServiceCallException("'" + serviceName + "' did not confirm the change ("
@@ -154,7 +160,23 @@ public class ServiceClient {
                 && (e.getCause() instanceof ConnectException || e.getCause() instanceof UnknownHostException);
     }
 
+    /** The service's {@code {"error": "..."}} message, or {@code null} if the response has none. */
+    private static String errorMessage(HttpClientErrorException e) {
+        try {
+            ErrorResponse body = e.getResponseBodyAs(ErrorResponse.class);
+            return body == null || body.error() == null || body.error().isBlank() ? null : body.error();
+        } catch (RuntimeException notJson) {
+            return null;
+        }
+    }
+
     private record UpdateRequest(String key, String value, String changedBy, String comment) {
+    }
+
+    private record PropertyView(String type, String value) {
+    }
+
+    private record ErrorResponse(String error) {
     }
 
     private record DeleteRequest(String key, String changedBy, String comment) {

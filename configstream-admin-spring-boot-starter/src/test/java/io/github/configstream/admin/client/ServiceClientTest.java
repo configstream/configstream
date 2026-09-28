@@ -51,7 +51,7 @@ class ServiceClientTest {
 
     @Test
     void readsCurrentConfigWithTheSecret() throws IOException {
-        int port = fakeService(200, "{\"a\":\"1\",\"b\":\"2\"}");
+        int port = fakeService(200, "{\"a\":{\"type\":\"int\",\"value\":\"1\"},\"b\":{\"type\":\"string\",\"value\":\"2\"}}");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null));
 
         assertThat(client.currentConfig("orders")).isEqualTo(Map.of("a", "1", "b", "2"));
@@ -70,7 +70,7 @@ class ServiceClientTest {
     @Test
     void failsOverToTheNextHealthyInstance() throws IOException {
         registry.register(new InstanceRegistration("orders", "o-1-dead", "localhost", unusedPort(), null));
-        int port = fakeService(200, "{\"a\":\"1\"}");
+        int port = fakeService(200, "{\"a\":{\"type\":\"int\",\"value\":\"1\"}}");
         registry.register(new InstanceRegistration("orders", "o-2", "localhost", port, null));
 
         assertThat(client.currentConfig("orders")).containsEntry("a", "1");
@@ -180,6 +180,27 @@ class ServiceClientTest {
                 .isInstanceOf(ServiceCallException.class)
                 .hasMessageContaining("'orders' rejected the request")
                 .hasMessageContaining("400");
+    }
+
+    @Test
+    void reportsTheServicesReasonForARejectedChange() throws IOException {
+        int port = fakeService(400, "{\"error\":\"'abc' is not a valid int.\"}");
+        registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null));
+
+        assertThatThrownBy(() -> client.update("orders", "limits.max", "abc", "alice", null))
+                .isInstanceOf(ServiceCallException.class)
+                .hasMessage("'orders' rejected the request: 'abc' is not a valid int.");
+    }
+
+    @Test
+    void aMissingPropertyIsNotMistakenForMissingEndpoints() throws IOException {
+        int port = fakeService(404, "{\"error\":\"No property 'brand.new'. Properties are created only from the "
+                + "application manifest (configstream.yml).\"}");
+        registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null));
+
+        assertThatThrownBy(() -> client.update("orders", "brand.new", "1", "alice", null))
+                .hasMessage("'orders' rejected the request: No property 'brand.new'. Properties are created only from "
+                        + "the application manifest (configstream.yml).");
     }
 
     @Test

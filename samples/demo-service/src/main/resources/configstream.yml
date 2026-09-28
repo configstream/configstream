@@ -1,0 +1,14 @@
+# The properties this service declares. On startup, any that are missing from MongoDB are created with their
+# initial value; existing values are never changed. Change values in the admin UI.
+properties:
+  - key: feature.x.enabled
+    type: boolean
+    initialValue: false
+    description: Turns feature X on for every instance
+  - key: limits.max
+    type: int
+    initialValue: 100
+    description: Maximum items per order
+  - key: checkout.banner
+    type: string
+    initialValue: "Free shipping on orders over $50"

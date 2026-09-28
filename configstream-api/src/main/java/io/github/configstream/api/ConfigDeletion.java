@@ -3,12 +3,11 @@ package io.github.configstream.api;
 import java.util.Objects;
 
 /**
- * A request to delete one config key, carrying who asked for it so the deletion is auditable.
+ * A request to delete one property, carrying who asked for it so the deletion is auditable.
  *
- * <p>Deleting is soft: the key disappears from every cache, but its history stays, and writing the key
- * again (for example, restoring the last value) continues its version numbering.
+ * <p>The property is removed from the store and every cache; its history is kept.
  *
- * @param key       the config key
+ * @param key       the property key
  * @param changedBy the authenticated identity making the change
  * @param comment   optional free-text reason; may be {@code null}
  */

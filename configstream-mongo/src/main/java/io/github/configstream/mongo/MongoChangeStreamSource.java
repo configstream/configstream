@@ -9,6 +9,8 @@ import com.mongodb.client.model.changestream.OperationType;
 import io.github.configstream.api.ConfigChange;
 import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigChangeSource;
+import io.github.configstream.api.ConfigValue;
+import io.github.configstream.api.InvalidConfigValueException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,11 +25,11 @@ import org.slf4j.LoggerFactory;
  * {@link ConfigChangeSource} backed by a MongoDB change stream. Requires a replica set
  * (a single-node one is fine) because change streams read the oplog.
  *
- * <p>Expected document shape, one document per key:
- * <pre>{ "_id": "feature.x.enabled", "value": "true" }</pre>
- * String, number and boolean values are exposed as strings; embedded documents as JSON.
- * Documents without a {@code value} field, or whose {@code _id} is not a string, are ignored; removing
- * the {@code value} field (which is how {@link MongoConfigWriter} deletes a key) is reported as a delete.
+ * <p>Expected document shape, one document per property (see {@link MongoValues}):
+ * <pre>{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }</pre>
+ * A document whose value doesn't fit its type (for example after a direct edit in the database) is left out and
+ * reported as a delete, so applications fall back to the property's manifest value until it is fixed. Documents
+ * whose {@code _id} is not a string are ignored.
  *
  * <p><b>Startup race:</b> the change stream is opened <em>before</em> the initial snapshot is read.
  * Anything written while the snapshot loads is held by the open stream (MongoDB keeps it in the
@@ -39,8 +41,6 @@ import org.slf4j.LoggerFactory;
  * has aged out of the oplog, or the collection is dropped/renamed, it reloads a fresh snapshot.
  */
 public class MongoChangeStreamSource implements ConfigChangeSource {
-
-    static final String VALUE_FIELD = "value";
 
     private static final Logger log = LoggerFactory.getLogger(MongoChangeStreamSource.class);
 
@@ -65,11 +65,11 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
     }
 
     @Override
-    public Map<String, String> loadInitial() {
-        Map<String, String> entries = new HashMap<>();
+    public Map<String, ConfigValue> loadInitial() {
+        Map<String, ConfigValue> entries = new HashMap<>();
         for (Document doc : collection.find()) {
             String key = keyOf(doc.get("_id"));
-            String value = valueOf(doc);
+            ConfigValue value = key == null ? null : valueOf(key, doc);
             if (key != null && value != null) {
                 entries.put(key, value);
             }
@@ -206,7 +206,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
                 if (key == null) {
                     return null;
                 }
-                String value = valueOf(doc);
+                ConfigValue value = valueOf(key, doc);
                 return value != null ? ConfigChange.upsert(key, value) : ConfigChange.delete(key);
             }
             case DELETE -> {
@@ -228,13 +228,15 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         return null;
     }
 
-    /** The value as the cache sees it, or null if the document has none. */
-    static String valueOf(Document doc) {
-        Object value = doc.get(VALUE_FIELD);
-        if (value == null) {
+    /** The document's typed value, or null (with a warning) if it has none that fits its type. */
+    private static ConfigValue valueOf(String key, Document doc) {
+        try {
+            return MongoValues.read(doc);
+        } catch (InvalidConfigValueException e) {
+            log.warn("Ignoring the stored value of property '{}': {} Applications use its manifest value until "
+                    + "it is fixed.", key, e.getMessage());
             return null;
         }
-        return value instanceof Document d ? d.toJson() : value.toString();
     }
 
     private void closeCursor() {

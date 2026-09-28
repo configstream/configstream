@@ -101,7 +101,7 @@ class ConfigStreamAdminAutoConfigurationTest {
         admin.close();
         withAdmin().run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(ConfigService.class).get("a")).contains("1");
+            assertThat(context.getBean(ConfigService.class).values()).containsKey("a.key");
         });
     }
 

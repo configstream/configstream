@@ -8,8 +8,8 @@ import java.util.Map;
  */
 public interface ConfigChangeSource extends AutoCloseable {
 
-    /** Reads the full current config from the store. Does not require {@link #start}. */
-    Map<String, String> loadInitial();
+    /** Reads every property from the store. Entries whose value doesn't fit their type are left out. Does not require {@link #start}. */
+    Map<String, ConfigValue> loadInitial();
 
     /**
      * Starts watching the store. Implementations must:

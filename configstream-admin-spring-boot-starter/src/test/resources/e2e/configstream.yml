@@ -1,0 +1,7 @@
+properties:
+  - key: feature.x.enabled
+    type: boolean
+    initialValue: true
+  - key: limits.max
+    type: int
+    initialValue: 10

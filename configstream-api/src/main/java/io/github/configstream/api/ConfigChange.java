@@ -3,13 +3,13 @@ package io.github.configstream.api;
 import java.util.Objects;
 
 /**
- * A single change to one config entry, as reported by a {@link ConfigChangeSource}.
+ * A single change to one property, as reported by a {@link ConfigChangeSource}.
  *
- * @param type  whether the entry was created/updated or removed
- * @param key   the config key, e.g. {@code feature.x.enabled}
+ * @param type  whether the property was created/updated or removed
+ * @param key   the property key, e.g. {@code feature.funds.enabled}
  * @param value the new value for {@link Type#UPSERT}; always {@code null} for {@link Type#DELETE}
  */
-public record ConfigChange(Type type, String key, String value) {
+public record ConfigChange(Type type, String key, ConfigValue value) {
 
     public enum Type { UPSERT, DELETE }
 
@@ -23,7 +23,7 @@ public record ConfigChange(Type type, String key, String value) {
         }
     }
 
-    public static ConfigChange upsert(String key, String value) {
+    public static ConfigChange upsert(String key, ConfigValue value) {
         return new ConfigChange(Type.UPSERT, key, value);
     }
 

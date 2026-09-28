@@ -1,0 +1,8 @@
+properties:
+  - key: feature.funds.enabled
+    type: boolean
+    initialValue: false
+    description: Show the funds page
+  - key: feature.funds.limit
+    type: int
+    initialValue: 3

@@ -34,7 +34,8 @@ MongoDB change streams push it to every instance.
 
 ## Usage (Spring Boot)
 
-Add `configstream-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set:
+Add `configstream-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set. Each service
+uses its own collection.
 
 ```yaml
 configstream:
@@ -43,9 +44,41 @@ configstream:
     collection: config        # optional, defaults to "config"
 ```
 
-Store one document per key: `{ "_id": "feature.x.enabled", "value": true }`.
+### Declare properties in `configstream.yml`
+
+Every property is declared in `src/main/resources/configstream.yml`, with a type (`boolean`, `int`, `decimal` or
+`string`) and an initial value:
+
+```yaml
+properties:
+  - key: feature.funds.enabled
+    type: boolean
+    initialValue: false
+    description: Show the funds page   # optional
+  - key: feature.funds.limit
+    type: int
+    initialValue: 3
+```
+
+- **The manifest is the only way to add properties.** On startup, each declared property that is missing from
+  MongoDB is created with its initial value, so a first deploy to a new environment finds everything it needs.
+  Existing values are never changed: the initial value only matters the first time.
+- **The stored value always wins.** The initial value is used only while a property is missing from MongoDB or its
+  stored value doesn't fit its type.
+- **Types never change.** Starting a version that declares an existing key with a different type fails with an
+  explanation. To change a type, declare the property under a new key.
+- **Per-environment initial values:** `configstream-prod.yml` next to the manifest can give declared properties a
+  different initial value in prod (`properties: { feature.funds.limit: 10 }`). It is used when
+  `configstream.environment=prod`, e.g. set in `application-prod.yml`. Environment files can't declare new keys.
+
+Read properties through typed constants, so a misspelled key or a value read as the wrong type doesn't compile.
+Generating them from the manifest is coming; until then they look like this:
 
 ```java
+public final class Feature {
+    public static final Property<Integer> FUNDS_LIMIT = Property.of("feature.funds.limit", Integer.class, 3);
+}
+
 @Service
 class Checkout {
     private final ConfigService config;
@@ -53,16 +86,17 @@ class Checkout {
     Checkout(ConfigService config) { this.config = config; }
 
     void run() {
-        if (config.getBoolean("feature.x.enabled", false)) { /* ... */ }
+        int limit = config.get(Feature.FUNDS_LIMIT);
     }
 
     @EventListener
     void onChange(ConfigChangedEvent e) {
-        // e.key(), e.oldValue(), e.newValue(), fired within ~1s of the change in Mongo
+        // e.isFor(Feature.FUNDS_LIMIT), e.oldValue(), e.newValue(); fired within ~1s of the change in Mongo
     }
 }
 ```
 
+Stored as one document per property: `{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }`.
 configstream uses its own connection and does not replace your application's `MongoClient` bean.
 
 ### Connecting to the admin server (optional)
@@ -81,20 +115,27 @@ configstream:
 - **`internal.secret`** enables the internal endpoints, through which the admin app changes config using *this
   service's* database credentials. Callers must send the secret in the `X-ConfigStream-Secret` header. Without a
   secret the endpoints do not exist. Serve them over HTTPS only.
-  - `POST /internal/config/update` with `{"key": "...", "value": "...", "changedBy": "alice", "comment": "optional"}`
-    returns the recorded history entry (200), or 204 if the value was already set.
-  - `POST /internal/config/delete` with `{"key": "...", "changedBy": "alice", "comment": "optional"}` soft-deletes the
-    key and returns the recorded history entry (200), or 204 if the key had no value.
-  - `GET /internal/config/history?key=...&limit=50` returns that key's changes, newest first.
-  - `GET /internal/config` returns every value as this instance currently sees it.
+  - `POST /internal/config/update` with `{"key": "...", "value": "...", "type": "int", "changedBy": "alice",
+    "comment": "optional"}` (`type` optional) sets an existing property and returns the recorded history entry (200),
+    or 204 if the value was already set. It never creates a property (404), and rejects a value that doesn't fit the
+    property's type or a different `type` (400). Rejections carry `{"error": "..."}`, a message for the person.
+  - `POST /internal/config/delete` with `{"key": "...", "changedBy": "alice", "comment": "optional"}` deletes an
+    orphan (a property this instance doesn't declare) and returns the recorded history entry (200), or 204 if it
+    doesn't exist. Properties this instance declares can't be deleted (409).
+  - `GET /internal/config/history?key=...&limit=50` returns that property's changes, newest first.
+  - `GET /internal/config` returns every property as this instance currently sees it:
+    `{"feature.funds.limit": {"type": "int", "value": "3"}}`.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
 - **History:** every change made through configstream is appended to `<collection>_history` (key, version, old and
-  new value, who, when, comment) in the same transaction as the change itself. To **roll back**, write the old value
-  again, e.g. with `"comment": "Reverted to v3"`; history is never rewritten. Changes made directly in the database
-  still reach every cache but are not recorded.
-- **Deletes are soft:** the document keeps its `_id` and `version` but loses its `value`, so the key leaves every cache
-  while its history stays. Writing the key again restores it and continues its version numbering.
+  new value, who, when, comment) in the same transaction as the change itself, starting with v1 "Created from
+  configstream.yml". To **roll back**, write the old value again, e.g. with `"comment": "Reverted to v3"`; history is
+  never rewritten. Changes made directly in the database still reach every cache but are not recorded.
+- **Deletes** remove the property but keep its history. If a version of the service that declares it starts again
+  (for example after a rollback), the property is created again with that version's initial value and its versions
+  continue; restore its old value from the history.
+- **Blue-green and rolling deploys:** give every version the same `spring.application.name`, and let every instance
+  register with the admin server, so properties still used by the old version aren't shown as orphans.
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 
@@ -162,6 +203,10 @@ Requirements: JDK 17+, Maven 3.9+, Docker.
 docker compose up -d        # local single-node Mongo replica set
 mvn verify                  # build + unit + integration tests
 ```
+
+Integration tests start MongoDB in Docker. Without Docker, point them at any replica set, such as a free Atlas cluster:
+set `CONFIGSTREAM_TEST_MONGO_URI` to its connection string, and each run uses its own `cstest_*` database, dropped
+afterwards.
 
 `samples/` holds two runnable apps for trying it by hand (not published): `demo-admin`, an admin server on port 8090,
 and `demo-service`, an `orders` service on port 8081 whose `GET /demo` shows live values. To use a MongoDB other than

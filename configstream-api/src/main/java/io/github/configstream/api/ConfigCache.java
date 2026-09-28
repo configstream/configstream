@@ -10,19 +10,19 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ConfigCache implements ConfigChangeListener {
 
-    private final Map<String, String> entries = new ConcurrentHashMap<>();
+    private final Map<String, ConfigValue> entries = new ConcurrentHashMap<>();
 
-    public Optional<String> get(String key) {
+    public Optional<ConfigValue> get(String key) {
         return Optional.ofNullable(entries.get(key));
     }
 
     /** Immutable point-in-time copy of all entries. */
-    public Map<String, String> getAll() {
+    public Map<String, ConfigValue> getAll() {
         return Map.copyOf(entries);
     }
 
     @Override
-    public void onSnapshot(Map<String, String> snapshot) {
+    public void onSnapshot(Map<String, ConfigValue> snapshot) {
         // Update in place rather than swapping maps, so readers never see an empty cache mid-reload.
         entries.putAll(snapshot);
         entries.keySet().retainAll(snapshot.keySet());

@@ -87,7 +87,8 @@ class ConfigEditController {
         }
         Optional<String> invalid = typeError(current.type(), form.value());
         if (invalid.isPresent()) {
-            model.addAttribute("errors", List.of(invalid.get()));
+            // Shown on the value field itself, which keeps what was typed
+            model.addAttribute("valueError", invalid.get());
             return editPage(service, form, current, model);
         }
         if (sameValue(current, form.value())) {
@@ -107,11 +108,13 @@ class ConfigEditController {
             RedirectAttributes redirect) {
         ServiceSummary service = findService(serviceName);
         List<String> errors = form.validate();
-        if (errors.isEmpty() && form.type() != null) {
-            typeError(form.type(), form.value()).ifPresent(errors::add);
-        }
         if (!errors.isEmpty()) {
             model.addAttribute("errors", errors);
+            return editPage(service, form, null, model);
+        }
+        Optional<String> invalid = form.type() == null ? Optional.empty() : typeError(form.type(), form.value());
+        if (invalid.isPresent()) {
+            model.addAttribute("valueError", invalid.get());
             return editPage(service, form, null, model);
         }
         remember(session, form.changedBy());

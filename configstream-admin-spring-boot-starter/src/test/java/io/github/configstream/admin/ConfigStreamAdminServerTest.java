@@ -186,7 +186,7 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("Edit property"),
                         containsString("name=\"key\" value=\"limits.max\""),
-                        containsString("type=\"number\" step=\"1\" name=\"value\" value=\"50\""),
+                        containsString("type=\"text\" inputmode=\"numeric\" name=\"value\" value=\"50\""),
                         containsString("Maximum items per order"))));
         mvc.perform(get("/services/orders/edit").param("key", "feature.x.enabled"))
                 .andExpect(content().string(allOf(
@@ -249,6 +249,27 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("&#39;3.5&#39; is not a valid int."),
                         not(containsString("<h1>Review change</h1>")))));
+    }
+
+    @Test
+    void anInvalidValueKeepsWhatWasTypedAndHighlightsTheField() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(config());
+
+        // Letters in an int field: shown back as typed, with the reason on the field
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "limits.max").param("value", "abc").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("name=\"value\" value=\"abc\""),
+                        containsString("class=\"mono invalid\""),
+                        containsString("aria-invalid=\"true\" aria-describedby=\"value-error\""),
+                        containsString("<p class=\"cs-field-error\" id=\"value-error\">&#39;abc&#39; is not a valid int.</p>"),
+                        not(containsString("cs-banner error")))));
+        // The same check guards a direct update, before anything is sent to the service
+        mvc.perform(post("/services/orders/update")
+                        .param("key", "limits.max").param("value", "abc").param("type", "int").param("changedBy", "alice"))
+                .andExpect(content().string(containsString("aria-invalid=\"true\"")));
+        verify(serviceClient, never()).update(any(), any(), any(), any(), any(), any());
     }
 
     @Test

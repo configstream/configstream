@@ -400,6 +400,12 @@ p { margin: 0; }
 .cs-field textarea, .cs-field input.mono { font-family: var(--mono); font-size: 13px; }
 .cs-field input[readonly] { color: var(--muted); cursor: not-allowed; }
 
+/* A value that doesn't fit the property's type: highlighted, with the reason right under it */
+.cs-field input.invalid, .cs-field textarea.invalid { border: 1.5px solid var(--danger); background: var(--danger-soft); }
+.cs-field input.invalid:focus-visible, .cs-field textarea.invalid:focus-visible { outline-color: var(--danger); }
+.cs-field-error { display: flex; align-items: center; gap: 6px; margin: -10px 0 0; color: var(--danger); font-size: 13px; font-weight: 550; }
+.cs-field-error::before { content: "!"; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--danger); color: var(--panel); font-size: 11px; font-weight: 700; }
+
 /* Steps (edit, review) */
 
 .cs-steps { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-weight: 600; }

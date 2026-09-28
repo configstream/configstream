@@ -45,16 +45,26 @@
                 <label><input type="radio" name="value" value="true" th:checked="${form.value() == 'true'}"> true</label>
                 <label><input type="radio" name="value" value="false" th:checked="${form.value() == 'false'}"> false</label>
             </fieldset>
+            <!--/* Text inputs, not type="number": the browser would silently drop what isn't a number. Anything typed is
+                 kept, and an invalid value comes back highlighted with the reason under it */-->
             <label class="cs-field" th:if="${form.type() == 'int'}"><span>Value<span class="hint">A whole number</span></span>
-                <input class="mono" type="number" step="1" name="value" th:value="${form.value()}" required>
+                <input class="mono" type="text" inputmode="numeric" name="value" th:value="${form.value()}" required
+                       autocomplete="off" spellcheck="false" th:classappend="${valueError} ? 'invalid'"
+                       th:attr="aria-invalid=${valueError != null ? 'true' : null},aria-describedby=${valueError != null ? 'value-error' : null}"
+                       th:autofocus="${valueError != null}">
             </label>
             <label class="cs-field" th:if="${form.type() == 'decimal'}"><span>Value<span class="hint">A number, e.g. 0.25</span></span>
                 <input class="mono" type="text" inputmode="decimal" name="value" th:value="${form.value()}" required
-                       autocomplete="off" spellcheck="false">
+                       autocomplete="off" spellcheck="false" th:classappend="${valueError} ? 'invalid'"
+                       th:attr="aria-invalid=${valueError != null ? 'true' : null},aria-describedby=${valueError != null ? 'value-error' : null}"
+                       th:autofocus="${valueError != null}">
             </label>
             <label class="cs-field" th:unless="${form.type() == 'boolean' or form.type() == 'int' or form.type() == 'decimal'}">Value
-                <textarea name="value" rows="4" spellcheck="false" th:text="${form.value()}">true</textarea>
+                <textarea name="value" rows="4" spellcheck="false" th:text="${form.value()}" th:classappend="${valueError} ? 'invalid'"
+                          th:attr="aria-invalid=${valueError != null ? 'true' : null},aria-describedby=${valueError != null ? 'value-error' : null}"
+                          th:autofocus="${valueError != null}">true</textarea>
             </label>
+            <p class="cs-field-error" id="value-error" th:if="${valueError}" th:text="${valueError}">'abc' is not a valid int.</p>
 
             <label class="cs-field">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">

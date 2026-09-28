@@ -1,10 +1,13 @@
 package io.github.configstream.admin.web;
 
+import io.github.configstream.admin.client.ConfigEntry;
 import io.github.configstream.admin.client.ServiceCallException;
 import io.github.configstream.admin.client.ServiceClient;
 import io.github.configstream.admin.registry.InstanceRegistry;
 import io.github.configstream.admin.registry.ServiceSummary;
 import io.github.configstream.api.ConfigHistoryEntry;
+import io.github.configstream.api.InvalidConfigValueException;
+import io.github.configstream.api.PropertyType;
 import jakarta.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,9 +23,11 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Write path of the UI. Every change takes two steps: an update is edited, then reviewed against the
- * current value before it is applied; a delete is shown with its current value before it is confirmed.
- * Writes go through the service's own internal endpoints, never to its database directly.
+ * Write path of the UI. It edits values only: properties are added through each service's manifest, never here,
+ * and their types never change. Every change takes two steps: an edit is checked against the property's type and
+ * reviewed against the current value before it is applied; a delete, allowed only for orphans (properties no active
+ * instance declares), is confirmed on its own page. Writes go through the service's own internal endpoints, never to
+ * its database directly, and the service checks every rule again.
  *
  * <p>There is no login yet, so "changed by" is whatever the user types; it is remembered in the session
  * to save retyping. Phase 6 replaces it with the authenticated user.
@@ -44,19 +49,20 @@ class ConfigEditController {
         this.basePath = basePath;
     }
 
-    /** The edit form. Pre-filled from the parameters, e.g. by the history page's "Restore" links. */
+    /** The edit form for an existing property. Pre-filled from the parameters, e.g. by the history page's "Restore" links. */
     @GetMapping("/edit")
     String edit(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model) {
         ServiceSummary service = findService(serviceName);
-        ChangeForm filled = form.withChangedByDefault(rememberedChangedBy(session));
-        if (filled.key() != null) {
-            Optional<String> current = currentValue(serviceName, filled.key(), model);
-            model.addAttribute("current", current.orElse(null));
-            if (filled.value() == null) {
-                filled = filled.withValue(current.orElse(null)); // editing: start from the current value
-            }
+        if (ChangeForm.isBlank(form.key())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "key is required: properties are added in the service's configstream.yml, not here");
         }
-        return editPage(service, filled, model);
+        ChangeForm filled = form.withChangedByDefault(rememberedChangedBy(session));
+        ConfigEntry current = currentEntry(serviceName, filled.key(), model).orElse(null);
+        if (current != null && filled.value() == null) {
+            filled = filled.withValue(current.value()); // start from the current value
+        }
+        return editPage(service, filled, current, model);
     }
 
     @PostMapping("/edit/review")
@@ -65,23 +71,33 @@ class ConfigEditController {
         List<String> errors = form.validate();
         if (!errors.isEmpty()) {
             model.addAttribute("errors", errors);
-            return editPage(service, form, model);
+            return editPage(service, form, null, model);
         }
         remember(session, form.changedBy());
-        Optional<String> current;
+        ConfigEntry current;
         try {
-            current = lookUpCurrent(serviceName, form.key());
+            current = lookUp(serviceName, form.key()).orElse(null);
         } catch (ServiceCallException e) {
             model.addAttribute("errors", List.of(e.getMessage()));
-            return editPage(service, form, model);
+            return editPage(service, form, null, model);
         }
-        if (current.isPresent() && current.get().equals(form.value())) {
+        if (current == null) {
+            model.addAttribute("errors", List.of(notFound(form.key())));
+            return editPage(service, form, null, model);
+        }
+        Optional<String> invalid = typeError(current.type(), form.value());
+        if (invalid.isPresent()) {
+            model.addAttribute("errors", List.of(invalid.get()));
+            return editPage(service, form, current, model);
+        }
+        if (sameValue(current, form.value())) {
             model.addAttribute("errors", List.of("'" + form.key() + "' already has this value; nothing to change."));
-            return editPage(service, form, model);
+            return editPage(service, form, current, model);
         }
         model.addAttribute("service", service);
-        model.addAttribute("form", form);
-        model.addAttribute("current", current.orElse(null));
+        model.addAttribute("form", form.withType(current.type()));
+        model.addAttribute("current", current);
+        model.addAttribute("description", service.declaration(form.key()).map(d -> d.description()).orElse(null));
         model.addAttribute("review", true);
         return "configstream-admin/edit";
     }
@@ -91,21 +107,23 @@ class ConfigEditController {
             RedirectAttributes redirect) {
         ServiceSummary service = findService(serviceName);
         List<String> errors = form.validate();
+        if (errors.isEmpty() && form.type() != null) {
+            typeError(form.type(), form.value()).ifPresent(errors::add);
+        }
         if (!errors.isEmpty()) {
             model.addAttribute("errors", errors);
-            return editPage(service, form, model);
+            return editPage(service, form, null, model);
         }
         remember(session, form.changedBy());
         Optional<ConfigHistoryEntry> entry;
         try {
-            entry = client.update(serviceName, form.key(), form.value(), form.changedBy(), form.comment());
+            entry = client.update(serviceName, form.key(), form.value(), form.type(), form.changedBy(), form.comment());
         } catch (ServiceCallException e) {
             model.addAttribute("errors", List.of("Update failed: " + e.getMessage()));
-            return editPage(service, form, model);
+            return editPage(service, form, null, model);
         }
         redirect.addFlashAttribute("notice", entry
-                .map(e -> (e.oldValue() == null ? "Created '" : "Updated '") + e.key() + "' (v" + e.version()
-                        + "). All instances pick it up within about a second.")
+                .map(e -> "Updated '" + e.key() + "' (v" + e.version() + "). All instances pick it up within about a second.")
                 .orElse("'" + form.key() + "' already had this value; nothing changed."));
         return "redirect:" + basePath + "/services/{serviceName}";
     }
@@ -117,7 +135,7 @@ class ConfigEditController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "key is required");
         }
         ChangeForm filled = form.withChangedByDefault(rememberedChangedBy(session));
-        model.addAttribute("current", currentValue(serviceName, filled.key(), model).orElse(null));
+        model.addAttribute("current", currentEntry(serviceName, filled.key(), model).orElse(null));
         return deletePage(service, filled, model);
     }
 
@@ -130,6 +148,9 @@ class ConfigEditController {
             model.addAttribute("errors", errors);
             return deletePage(service, form, model);
         }
+        if (!service.isOrphan(form.key())) {
+            return deletePage(service, form, model); // the page explains why it can't be deleted
+        }
         remember(session, form.changedBy());
         Optional<ConfigHistoryEntry> entry;
         try {
@@ -139,14 +160,17 @@ class ConfigEditController {
             return deletePage(service, form, model);
         }
         redirect.addFlashAttribute("notice", entry
-                .map(e -> "Deleted '" + e.key() + "' (v" + e.version() + "). Its history is kept; restore it from there.")
+                .map(e -> "Deleted '" + e.key() + "' (v" + e.version() + "). Its history is kept.")
                 .orElse("'" + form.key() + "' was already deleted; nothing changed."));
         return "redirect:" + basePath + "/services/{serviceName}";
     }
 
-    private String editPage(ServiceSummary service, ChangeForm form, Model model) {
+    private String editPage(ServiceSummary service, ChangeForm form, ConfigEntry current, Model model) {
         model.addAttribute("service", service);
-        model.addAttribute("form", form);
+        model.addAttribute("form", current != null ? form.withType(current.type()) : form);
+        model.addAttribute("current", current);
+        model.addAttribute("description", form.key() == null ? null
+                : service.declaration(form.key()).map(d -> d.description()).orElse(null));
         model.addAttribute("review", false);
         return "configstream-admin/edit";
     }
@@ -154,21 +178,62 @@ class ConfigEditController {
     private String deletePage(ServiceSummary service, ChangeForm form, Model model) {
         model.addAttribute("service", service);
         model.addAttribute("form", form);
+        boolean orphan = form.key() != null && service.isOrphan(form.key());
+        model.addAttribute("deletable", orphan);
+        if (!orphan && form.key() != null) {
+            long declaring = service.declaringCount(form.key());
+            model.addAttribute("inUse", declaring > 0
+                    ? "'" + form.key() + "' is declared by " + declaring + (declaring == 1 ? " active instance" : " active instances")
+                            + " of " + service.serviceName() + ", so it is in use and can't be deleted. Remove it from the "
+                            + "service's configstream.yml and deploy that version first; once no running instance declares it, "
+                            + "it is shown as an orphan and can be deleted."
+                    : "'" + form.key() + "' can't be deleted yet: not every running instance of " + service.serviceName()
+                            + " has reported which properties it uses (instances of an older configstream version don't).");
+        }
         return "configstream-admin/delete";
     }
 
-    /** The key's current value, or empty if it has none (or the lookup failed, which is shown as an error). */
-    private Optional<String> currentValue(String serviceName, String key, Model model) {
+    /** The property's current type and value, or empty if it doesn't exist (or the lookup failed, shown as an error). */
+    private Optional<ConfigEntry> currentEntry(String serviceName, String key, Model model) {
         try {
-            return lookUpCurrent(serviceName, key);
+            Optional<ConfigEntry> entry = lookUp(serviceName, key);
+            if (entry.isEmpty()) {
+                model.addAttribute("errors", List.of(notFound(key)));
+            }
+            return entry;
         } catch (ServiceCallException e) {
             model.addAttribute("errors", List.of(e.getMessage()));
             return Optional.empty();
         }
     }
 
-    private Optional<String> lookUpCurrent(String serviceName, String key) {
+    private Optional<ConfigEntry> lookUp(String serviceName, String key) {
         return Optional.ofNullable(client.currentConfig(serviceName).get(key));
+    }
+
+    private static String notFound(String key) {
+        return "There is no property '" + key + "'. Properties are added in each service's configstream.yml, not here.";
+    }
+
+    /** Why {@code value} isn't valid for {@code typeName}, if it isn't. */
+    private static Optional<String> typeError(String typeName, String value) {
+        try {
+            PropertyType.fromName(typeName).parse(value);
+            return Optional.empty();
+        } catch (InvalidConfigValueException e) {
+            return Optional.of(e.getMessage());
+        } catch (IllegalArgumentException unknownType) {
+            return Optional.empty(); // a type this admin doesn't know; the service checks it
+        }
+    }
+
+    private static boolean sameValue(ConfigEntry current, String value) {
+        try {
+            PropertyType type = PropertyType.fromName(current.type());
+            return type.sameValue(type.parse(current.value()), type.parse(value));
+        } catch (IllegalArgumentException e) {
+            return current.value().equals(value);
+        }
     }
 
     private ServiceSummary findService(String serviceName) {
@@ -186,12 +251,14 @@ class ConfigEditController {
 
     /**
      * Form fields shared by the update and delete flows. Blank comments count as none; values are kept
-     * exactly as typed (an empty value is a valid value).
+     * exactly as typed (an empty value is a valid string). {@code type} is the property's type, carried from the
+     * review to the update so the service can reject a type change.
      */
-    record ChangeForm(String key, String value, String changedBy, String comment) {
+    record ChangeForm(String key, String value, String type, String changedBy, String comment) {
 
         ChangeForm {
             key = trimToNull(key);
+            type = trimToNull(type);
             changedBy = trimToNull(changedBy);
             comment = trimToNull(comment);
         }
@@ -199,7 +266,7 @@ class ConfigEditController {
         List<String> validate() {
             List<String> errors = validateDeletion();
             if (value == null) {
-                errors.add("Value is required (it may be empty).");
+                errors.add("Value is required.");
             }
             return errors;
         }
@@ -216,11 +283,15 @@ class ConfigEditController {
         }
 
         ChangeForm withValue(String newValue) {
-            return new ChangeForm(key, newValue, changedBy, comment);
+            return new ChangeForm(key, newValue, type, changedBy, comment);
+        }
+
+        ChangeForm withType(String newType) {
+            return new ChangeForm(key, value, newType, changedBy, comment);
         }
 
         ChangeForm withChangedByDefault(String remembered) {
-            return new ChangeForm(key, value, changedBy != null ? changedBy : remembered, comment);
+            return new ChangeForm(key, value, type, changedBy != null ? changedBy : remembered, comment);
         }
 
         static boolean isBlank(String s) {

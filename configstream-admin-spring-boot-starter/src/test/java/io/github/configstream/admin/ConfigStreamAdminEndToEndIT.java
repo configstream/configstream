@@ -130,12 +130,16 @@ class ConfigStreamAdminEndToEndIT {
 
             // A declared property is in use, so it can't be deleted
             assertThat(postForm("/services/payments/delete", Map.of("key", "limits.max", "changedBy", "dave")).body())
-                    .contains("Delete failed", "is declared in this service", "can&#39;t be deleted");
+                    .contains("is declared by 2 active instances of payments", "can&#39;t be deleted");
 
             // An orphan (in the store, declared by no instance) can be deleted, and its history stays
             configCollection("payments").insertOne(new Document("_id", "feature.old.flag")
                     .append("type", "boolean").append("value", true).append("version", 1L));
             await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0))).contains("feature.old.flag"));
+            // The instances registered what their manifest declares, so the admin knows it is an orphan
+            assertThat(getHtml(adminUrl + "/services/payments"))
+                    .contains("Orphan", "<span class=\"cs-type\">int</span>", "/services/payments/delete?key=feature.old.flag")
+                    .doesNotContain("/services/payments/delete?key=limits.max", "Add entry");
             HttpResponse<String> deleted = postForm("/services/payments/delete", Map.of(
                     "key", "feature.old.flag", "changedBy", "dave", "comment", "retired"));
             assertThat(deleted.statusCode()).isEqualTo(302);

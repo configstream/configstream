@@ -34,9 +34,10 @@ class DashboardController {
 
     @GetMapping("/services/{serviceName}")
     String service(@PathVariable String serviceName, Model model) {
-        model.addAttribute("service", findService(serviceName));
+        ServiceSummary service = findService(serviceName);
+        model.addAttribute("service", service);
         try {
-            model.addAttribute("config", client.currentConfig(serviceName));
+            model.addAttribute("config", PropertyRow.of(client.currentConfig(serviceName), service));
         } catch (ServiceCallException e) {
             model.addAttribute("configError", e.getMessage());
         }

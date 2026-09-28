@@ -172,8 +172,13 @@ configstream:
 ## Admin server
 
 The admin server is the app services register with (`configstream.admin.url`). It shows every registered service, its
-active instances (those sending heartbeats), its current config and each key's change history, and lets you add, edit,
-delete and restore entries. Deploy one per environment.
+active instances (those sending heartbeats), each property with its type, value and description, and each property's
+change history. Deploy one per environment.
+
+It **edits values only**. Properties are added, renamed and retyped in each service's `configstream.yml`, so there is
+no Add button, and inputs match the type (true/false buttons for a boolean, a number field for an int). Instances tell
+the admin server which properties their manifest declares when they register; a stored property that no active
+instance declares is marked **Orphan**, and only orphans can be deleted.
 
 Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer` does:
 
@@ -197,8 +202,10 @@ public class ConfigStreamAdminApp {
 The dependency alone activates nothing; the annotation does. There is no separate admin jar to download: the admin
 server is always your own Spring Boot app, deployed and configured like any other.
 
-Every change takes two steps: an edit is reviewed against the current value before it is applied, and a delete is
-confirmed on its own page. The admin app never touches a service's database. It sends the change to any healthy
+Every change takes two steps: an edit is checked against the property's type and reviewed against the current value
+before it is applied, and a delete is confirmed on its own page, which warns that rolling back to a version declaring
+the property creates it again with that version's initial value. The admin app never touches a service's database.
+It sends the change to any healthy
 instance of the service, which writes it with its own credentials, and every instance picks it up within about a
 second. Failures (no instance reachable, secret rejected, request invalid) are shown on the page. If an instance
 received the change but did not confirm it (a timeout or server error), the admin app does not retry on another

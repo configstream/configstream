@@ -79,9 +79,9 @@ class InstanceRegistryTest {
 
     @Test
     void reRegisteringRefreshesTheInstance() {
-        registry.register(new InstanceRegistration("orders", "o-1", "10.0.0.1", 8080, "team-a"));
+        registry.register(new InstanceRegistration("orders", "o-1", "10.0.0.1", 8080, "team-a", null));
         clock.advance(Duration.ofMinutes(5));
-        registry.register(new InstanceRegistration("orders", "o-1", "10.0.0.2", 9090, "team-b"));
+        registry.register(new InstanceRegistration("orders", "o-1", "10.0.0.2", 9090, "team-b", null));
 
         RegisteredInstance instance = onlyInstance();
         assertThat(instance.up()).isTrue();
@@ -100,7 +100,7 @@ class InstanceRegistryTest {
 
     @Test
     void instanceWithoutPortHasNoAddress() {
-        registry.register(new InstanceRegistration("worker", "w-1", "10.0.0.1", null, null));
+        registry.register(new InstanceRegistration("worker", "w-1", "10.0.0.1", null, null, null));
 
         assertThat(onlyInstance("worker").baseUrl()).isNull();
     }
@@ -109,12 +109,52 @@ class InstanceRegistryTest {
         return onlyInstance("orders");
     }
 
+    @Test
+    void aPropertyIsAnOrphanOnlyWhenNoActiveInstanceDeclaresIt() {
+        // Blue-green: blue still declares the old flag, green declares the new one
+        registry.register(declaring("orders", "blue", "feature.old.flag", "limits.max"));
+        registry.register(declaring("orders", "green", "feature.new.flag", "limits.max"));
+
+        ServiceSummary orders = registry.service("orders").orElseThrow();
+        assertThat(orders.isOrphan("feature.old.flag")).isFalse();
+        assertThat(orders.isOrphan("feature.new.flag")).isFalse();
+        assertThat(orders.isOrphan("feature.gone")).isTrue();
+        assertThat(orders.declaringCount("limits.max")).isEqualTo(2);
+        assertThat(orders.declaredProperties()).containsOnlyKeys("feature.old.flag", "limits.max", "feature.new.flag");
+
+        // Blue stops: the old flag becomes an orphan
+        registry.deregister("blue");
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isTrue();
+    }
+
+    @Test
+    void anInstanceThatStoppedHeartbeatingNoLongerKeepsItsPropertiesInUse() {
+        registry.register(declaring("orders", "blue", "feature.old.flag"));
+        clock.advance(Duration.ofMinutes(1));
+        registry.register(declaring("orders", "green", "feature.new.flag"));
+
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isTrue();
+    }
+
+    @Test
+    void nothingIsAnOrphanWhileAnActiveInstanceHasNotReportedItsProperties() {
+        registry.register(declaring("orders", "new", "limits.max"));
+        registry.register(instance("orders", "old")); // older configstream: sends no properties
+
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isFalse();
+    }
+
+    private static InstanceRegistration declaring(String service, String id, String... keys) {
+        return new InstanceRegistration(service, id, "localhost", 8080, "team-a",
+                java.util.Arrays.stream(keys).map(k -> new DeclaredProperty(k, "boolean", null)).toList());
+    }
+
     private RegisteredInstance onlyInstance(String service) {
         return registry.service(service).orElseThrow().instances().get(0);
     }
 
     static InstanceRegistration instance(String service, String id) {
-        return new InstanceRegistration(service, id, "localhost", 8080, "team-a");
+        return new InstanceRegistration(service, id, "localhost", 8080, "team-a", null);
     }
 
     static class MutableClock extends Clock {

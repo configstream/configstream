@@ -15,6 +15,7 @@
     --danger-hover: #962320;
     --danger-soft: #fbe5e4;
     --warn: #8a5d00;
+    --warn-soft: #fbefd2;
     --header: #16181d;
     --header-text: #f3f4f6;
     --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
@@ -38,6 +39,7 @@
         --danger-hover: #f59a92;
         --danger-soft: #3a1a19;
         --warn: #e0ae45;
+        --warn-soft: #33280f;
         --header: #0a0c0f;
         --header-text: #e7eaee;
         color-scheme: dark;
@@ -137,6 +139,7 @@ p { margin: 0; }
 .cs-banner svg { flex-shrink: 0; margin-top: 1px; }
 .cs-banner.success { background: var(--success-soft); border-color: var(--success); color: var(--success); }
 .cs-banner.error { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.cs-banner.warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); font-weight: 500; }
 
 .cs-note {
     display: flex;
@@ -183,7 +186,42 @@ p { margin: 0; }
 .cs-row:last-child { border-bottom: 0; }
 .cs-row:hover { background: var(--bg); }
 .cs-row.instances { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 160px 200px; font-size: 13px; }
-.cs-row.config { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 280px; }
+.cs-row.config { grid-template-columns: minmax(0, 1.2fr) 80px minmax(0, 1fr) 280px; }
+.cs-key-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.cs-description { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12.5px; }
+
+.cs-type {
+    justify-self: start;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+}
+
+.cs-property-head { display: flex; align-items: center; gap: 10px; }
+.cs-property-head .cs-key { font-size: 16px; }
+
+/* true / false as two large radio buttons */
+.cs-field.cs-choice { flex-direction: row; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.cs-choice legend { margin-bottom: 6px; padding: 0; font-weight: 600; }
+.cs-choice label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 110px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    font-family: var(--mono);
+    font-weight: 500;
+    cursor: pointer;
+}
+.cs-choice label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.cs-field.cs-choice input { width: auto; margin: 0; accent-color: var(--accent); }
 .cs-row.head,
 .cs-row.head:hover {
     padding-top: 8px;
@@ -425,6 +463,7 @@ p { margin: 0; }
 }
 
 .cs-tag.deleted { background: var(--danger-soft); color: var(--danger); }
+.cs-tag.orphan { background: var(--warn-soft); color: var(--warn); cursor: help; }
 
 .cs-change { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 14px; }
 .cs-change .old { color: var(--muted); text-decoration: line-through; white-space: pre-wrap; overflow-wrap: anywhere; }

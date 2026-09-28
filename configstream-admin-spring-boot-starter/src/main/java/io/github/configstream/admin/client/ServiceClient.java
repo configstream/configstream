@@ -47,16 +47,14 @@ public class ServiceClient {
         this.properties = properties;
     }
 
-    /** Current values as text, as one active instance sees them, sorted by key. */
-    public Map<String, String> currentConfig(String serviceName) {
-        Map<String, PropertyView> properties = call(serviceName, (baseUrl, secret) -> http.get()
+    /** Every property with its type, as one active instance sees them, sorted by key. */
+    public Map<String, ConfigEntry> currentConfig(String serviceName) {
+        Map<String, ConfigEntry> properties = call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config")
                 .header(SECRET_HEADER, secret)
                 .retrieve()
-                .body(new ParameterizedTypeReference<Map<String, PropertyView>>() {}));
-        Map<String, String> values = new TreeMap<>();
-        properties.forEach((key, property) -> values.put(key, property.value()));
-        return values;
+                .body(new ParameterizedTypeReference<Map<String, ConfigEntry>>() {}));
+        return new TreeMap<>(properties);
     }
 
     /** Changes to {@code key}, newest first. */
@@ -69,13 +67,14 @@ public class ServiceClient {
     }
 
     /**
-     * Sets {@code key} to {@code value} through the service, recording who changed it and why.
+     * Sets the existing property {@code key} to {@code value} through the service, recording who changed it and why.
+     * {@code type} is the type the admin believes the property has; the service rejects the change if it differs.
      *
      * @return the recorded history entry, or empty if the key already had this value
      */
-    public Optional<ConfigHistoryEntry> update(String serviceName, String key, String value, String changedBy,
-            String comment) {
-        return write(serviceName, "/internal/config/update", new UpdateRequest(key, value, changedBy, comment));
+    public Optional<ConfigHistoryEntry> update(String serviceName, String key, String value, String type,
+            String changedBy, String comment) {
+        return write(serviceName, "/internal/config/update", new UpdateRequest(key, value, type, changedBy, comment));
     }
 
     /**
@@ -170,12 +169,8 @@ public class ServiceClient {
         }
     }
 
-    private record UpdateRequest(String key, String value, String changedBy, String comment) {
+    private record UpdateRequest(String key, String value, String type, String changedBy, String comment) {
     }
-
-    private record PropertyView(String type, String value) {
-    }
-
     private record ErrorResponse(String error) {
     }
 

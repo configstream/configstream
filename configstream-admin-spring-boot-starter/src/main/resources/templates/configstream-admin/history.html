@@ -19,7 +19,14 @@
 
     <th:block th:if="${entries}">
         <p class="cs-muted" th:if="${entries.isEmpty()}">No recorded changes yet.</p>
-        <!--/* Restoring goes through the normal edit and review steps. The first entry is the current value, unless it is a deletion */-->
+        <!--/* Restoring an older value goes through the normal edit and review steps. The first entry is the current
+             value; if it is a deletion, the property doesn't exist and only the manifest can create it again */-->
+        <div class="cs-note" th:if="${!entries.isEmpty() and entries[0].deleted()}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            <span>This property was deleted. If a version of the service that declares it starts again, it is created again
+                with that version's initial value, and you can then restore an older value from here.</span>
+        </div>
         <ol class="cs-timeline" th:unless="${entries.isEmpty()}">
             <li th:each="e, row : ${entries}" th:class="${row.first} ? 'cs-event current' : 'cs-event'">
                 <div class="cs-event-rail"><span class="cs-version" th:text="'v' + ${e.version()}">v2</span></div>
@@ -31,12 +38,8 @@
                         <span class="cs-tag deleted" th:if="${e.deleted()}">Deleted</span>
                         <span class="cs-tag" th:if="${row.first and !e.deleted()}">Current</span>
                         <span class="cs-spacer"></span>
-                        <a class="cs-act" th:if="${!e.deleted() and !row.first}"
+                        <a class="cs-act" th:if="${!e.deleted() and !row.first and !entries[0].deleted()}"
                            th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.newValue()}, comment='Reverted to v' + ${e.version()})}">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg>Restore</a>
-                        <a class="cs-act" th:if="${e.deleted() and row.first}"
-                           th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.oldValue()}, comment='Restored after deletion in v' + ${e.version()})}">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg>Restore</a>
                     </div>

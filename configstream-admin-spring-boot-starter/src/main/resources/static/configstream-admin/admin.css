@@ -403,6 +403,7 @@ p { margin: 0; }
 /* A value that doesn't fit the property's type: highlighted, with the reason right under it */
 .cs-field input.invalid, .cs-field textarea.invalid { border: 1.5px solid var(--danger); background: var(--danger-soft); }
 .cs-field input.invalid:focus-visible, .cs-field textarea.invalid:focus-visible { outline-color: var(--danger); }
+.cs-field.cs-choice.invalid label { border: 1.5px solid var(--danger); background: var(--danger-soft); }
 .cs-field-error { display: flex; align-items: center; gap: 6px; margin: -10px 0 0; color: var(--danger); font-size: 13px; font-weight: 550; }
 .cs-field-error::before { content: "!"; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--danger); color: var(--panel); font-size: 11px; font-weight: 700; }
 

@@ -265,6 +265,18 @@ class ConfigStreamAdminServerTest {
                         containsString("aria-invalid=\"true\" aria-describedby=\"value-error\""),
                         containsString("<p class=\"cs-field-error\" id=\"value-error\">&#39;abc&#39; is not a valid int.</p>"),
                         not(containsString("cs-banner error")))));
+        // Booleans: the true/false buttons are highlighted the same way, for a wrong value or none at all
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "feature.x.enabled").param("value", "yes").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("<fieldset class=\"cs-field cs-choice invalid\" aria-invalid=\"true\""),
+                        containsString("&#39;yes&#39; is not a valid boolean."))));
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "feature.x.enabled").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("<fieldset class=\"cs-field cs-choice invalid\" aria-invalid=\"true\""),
+                        containsString("<p class=\"cs-field-error\" id=\"value-error\">Value is required.</p>"),
+                        not(containsString("cs-banner error")))));
         // The same check guards a direct update, before anything is sent to the service
         mvc.perform(post("/services/orders/update")
                         .param("key", "limits.max").param("value", "abc").param("type", "int").param("changedBy", "alice"))

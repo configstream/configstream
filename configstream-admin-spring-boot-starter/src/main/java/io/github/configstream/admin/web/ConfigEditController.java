@@ -68,10 +68,9 @@ class ConfigEditController {
     @PostMapping("/edit/review")
     String review(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model) {
         ServiceSummary service = findService(serviceName);
-        List<String> errors = form.validate();
-        if (!errors.isEmpty()) {
-            model.addAttribute("errors", errors);
-            return editPage(service, form, null, model);
+        if (!validate(form, model)) {
+            // Redraw the input that matches the property's type, highlighted
+            return editPage(service, form, form.key() == null ? null : currentOrNull(serviceName, form.key()), model);
         }
         remember(session, form.changedBy());
         ConfigEntry current;
@@ -107,9 +106,7 @@ class ConfigEditController {
     String update(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model,
             RedirectAttributes redirect) {
         ServiceSummary service = findService(serviceName);
-        List<String> errors = form.validate();
-        if (!errors.isEmpty()) {
-            model.addAttribute("errors", errors);
+        if (!validate(form, model)) {
             return editPage(service, form, null, model);
         }
         Optional<String> invalid = form.type() == null ? Optional.empty() : typeError(form.type(), form.value());
@@ -169,6 +166,20 @@ class ConfigEditController {
         return "redirect:" + basePath + "/services/{serviceName}?view=orphans";
     }
 
+    /**
+     * Checks the fields every change needs. Problems with the key or name are shown at the top; a missing value is
+     * shown on the value field, like a value of the wrong type.
+     */
+    private static boolean validate(ChangeForm form, Model model) {
+        List<String> errors = form.validateDeletion();
+        if (!errors.isEmpty()) {
+            model.addAttribute("errors", errors);
+        }
+        if (form.value() == null) {
+            model.addAttribute("valueError", "Value is required.");
+        }
+        return errors.isEmpty() && form.value() != null;
+    }
     private String editPage(ServiceSummary service, ChangeForm form, ConfigEntry current, Model model) {
         model.addAttribute("service", service);
         model.addAttribute("form", current != null ? form.withType(current.type()) : form);
@@ -208,6 +219,15 @@ class ConfigEditController {
         } catch (ServiceCallException e) {
             model.addAttribute("errors", List.of(e.getMessage()));
             return Optional.empty();
+        }
+    }
+
+    /** The property's type and value, or {@code null} if it doesn't exist or can't be looked up right now. */
+    private ConfigEntry currentOrNull(String serviceName, String key) {
+        try {
+            return lookUp(serviceName, key).orElse(null);
+        } catch (ServiceCallException e) {
+            return null;
         }
     }
 
@@ -265,14 +285,6 @@ class ConfigEditController {
             type = trimToNull(type);
             changedBy = trimToNull(changedBy);
             comment = trimToNull(comment);
-        }
-
-        List<String> validate() {
-            List<String> errors = validateDeletion();
-            if (value == null) {
-                errors.add("Value is required.");
-            }
-            return errors;
         }
 
         List<String> validateDeletion() {

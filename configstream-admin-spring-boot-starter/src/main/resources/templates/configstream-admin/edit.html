@@ -40,7 +40,8 @@
             </p>
 
             <!--/* An input that matches the property's type; the value is checked again on review and by the service */-->
-            <fieldset class="cs-field cs-choice" th:if="${form.type() == 'boolean'}">
+            <fieldset class="cs-field cs-choice" th:if="${form.type() == 'boolean'}" th:classappend="${valueError} ? 'invalid'"
+                      th:attr="aria-invalid=${valueError != null ? 'true' : null},aria-describedby=${valueError != null ? 'value-error' : null}">
                 <legend>Value</legend>
                 <label><input type="radio" name="value" value="true" th:checked="${form.value() == 'true'}"> true</label>
                 <label><input type="radio" name="value" value="false" th:checked="${form.value() == 'false'}"> false</label>

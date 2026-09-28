@@ -12,36 +12,53 @@
 
     <th:block th:each="e : ${errors}"><div th:replace="~{configstream-admin/layout :: error(${e})}"></div></th:block>
 
-    <div>
-        <h1>Delete <code th:text="${form.key()}">feature.x.enabled</code>?</h1>
-        <p class="cs-lead">The key is removed from every instance of <strong th:text="${service.serviceName()}">orders</strong>
-            within about a second, so code reading it falls back to its default. Its history is kept, and you can
-            restore it from the history page.</p>
-    </div>
-
-    <form class="cs-panel cs-form" method="post"
-          th:action="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()})}">
-        <dl class="cs-details" style="border-top: 0; padding-top: 0">
-            <dt>Service</dt><dd th:text="${service.serviceName()}">orders</dd>
-            <dt>Key</dt><dd><code class="cs-key" th:text="${form.key()}">feature.x.enabled</code></dd>
-            <th:block th:if="${current != null}">
-                <dt>Current value</dt><dd><span class="cs-value" th:text="${current}">true</span></dd>
-            </th:block>
-        </dl>
-        <input type="hidden" name="key" th:value="${form.key()}">
-        <label class="cs-field">Your name
-            <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
-        </label>
-        <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>
-            <input name="comment" th:value="${form.comment()}" autocomplete="off">
-        </label>
+    <th:block th:unless="${deletable}">
+        <h1><code th:text="${form.key()}">feature.x.enabled</code> is in use</h1>
+        <div th:replace="~{configstream-admin/layout :: error(${inUse})}"></div>
         <div class="cs-buttons">
-            <button type="submit" class="cs-button danger large">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete key</button>
-            <a class="cs-button large" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
+            <a class="cs-button large" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Back</a>
         </div>
-    </form>
+    </th:block>
+
+    <th:block th:if="${deletable}">
+        <div>
+            <h1>Delete <code th:text="${form.key()}">feature.x.enabled</code>?</h1>
+            <p class="cs-lead">No running instance of <strong th:text="${service.serviceName()}">orders</strong> declares this
+                property, so nothing reads it. It is removed from the database; its history is kept.</p>
+        </div>
+
+        <div class="cs-banner warn" role="note">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18h.01"/></svg>
+            <span>If you roll back to a version that declares this property, it will be created again with that version's
+                initial value, not the value it has now. Its previous values stay in the history, so you can restore them.</span>
+        </div>
+
+        <form class="cs-panel cs-form" method="post"
+              th:action="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()})}">
+            <dl class="cs-details" style="border-top: 0; padding-top: 0">
+                <dt>Service</dt><dd th:text="${service.serviceName()}">orders</dd>
+                <dt>Key</dt><dd><code class="cs-key" th:text="${form.key()}">feature.x.enabled</code></dd>
+                <th:block th:if="${current != null}">
+                    <dt>Type</dt><dd><span class="cs-type" th:text="${current.type()}">boolean</span></dd>
+                    <dt>Current value</dt><dd><span class="cs-value" th:text="${current.value()}">true</span></dd>
+                </th:block>
+            </dl>
+            <input type="hidden" name="key" th:value="${form.key()}">
+            <label class="cs-field">Your name
+                <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
+            </label>
+            <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>
+                <input name="comment" th:value="${form.comment()}" autocomplete="off">
+            </label>
+            <div class="cs-buttons">
+                <button type="submit" class="cs-button danger large">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete property</button>
+                <a class="cs-button large" th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}">Cancel</a>
+            </div>
+        </form>
+    </th:block>
 </main>
 </body>
 </html>

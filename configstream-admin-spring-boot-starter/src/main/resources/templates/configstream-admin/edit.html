@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{configstream-admin/layout :: head(${form.key() ?: 'New entry'} + ' · ' + ${service.serviceName()})}"></head>
+<head th:replace="~{configstream-admin/layout :: head(${form.key() ?: 'Edit'} + ' · ' + ${service.serviceName()})}"></head>
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
 <main class="cs-main narrow">
     <nav class="cs-crumbs" aria-label="Breadcrumb">
         <a th:href="@{__${configStreamAdminBase}__/}">Services</a><span class="sep">/</span><a
             th:href="@{__${configStreamAdminBase}__/services/{name}(name=${service.serviceName()})}" th:text="${service.serviceName()}">orders</a><span
-            class="sep">/</span><span th:text="${review ? 'Review change' : (current != null ? 'Edit entry' : 'New entry')}">Edit entry</span>
+            class="sep">/</span><span th:text="${review ? 'Review change' : 'Edit property'}">Edit property</span>
     </nav>
 
     <ol class="cs-steps" aria-label="Steps">
@@ -23,22 +23,39 @@
 
     <th:block th:unless="${review}">
         <div>
-            <h1 th:text="${current != null ? 'Edit entry' : 'New entry'}">Edit entry</h1>
+            <h1>Edit property</h1>
             <p class="cs-lead">You review the change before anything is written.</p>
         </div>
 
         <form class="cs-panel cs-form" method="post"
               th:action="@{__${configStreamAdminBase}__/services/{name}/edit/review(name=${service.serviceName()})}">
-            <label class="cs-field">Key
-                <input class="mono" name="key" th:value="${form.key()}" th:readonly="${current != null}" required
+            <input type="hidden" name="key" th:value="${form.key()}">
+            <div class="cs-property-head">
+                <code class="cs-key" th:text="${form.key()}">limits.max</code>
+                <span class="cs-type" th:if="${form.type()}" th:text="${form.type()}">int</span>
+            </div>
+            <p class="cs-description" th:if="${description}" th:text="${description}">Maximum items per order</p>
+            <p class="cs-muted" th:if="${current != null}">
+                Current value: <span class="cs-value" th:text="${current.value()}">false</span>
+            </p>
+
+            <!--/* An input that matches the property's type; the value is checked again on review and by the service */-->
+            <fieldset class="cs-field cs-choice" th:if="${form.type() == 'boolean'}">
+                <legend>Value</legend>
+                <label><input type="radio" name="value" value="true" th:checked="${form.value() == 'true'}"> true</label>
+                <label><input type="radio" name="value" value="false" th:checked="${form.value() == 'false'}"> false</label>
+            </fieldset>
+            <label class="cs-field" th:if="${form.type() == 'int'}"><span>Value<span class="hint">A whole number</span></span>
+                <input class="mono" type="number" step="1" name="value" th:value="${form.value()}" required>
+            </label>
+            <label class="cs-field" th:if="${form.type() == 'decimal'}"><span>Value<span class="hint">A number, e.g. 0.25</span></span>
+                <input class="mono" type="text" inputmode="decimal" name="value" th:value="${form.value()}" required
                        autocomplete="off" spellcheck="false">
             </label>
-            <p class="cs-muted" th:if="${current != null}">
-                Current value: <span class="cs-value" th:text="${current}">false</span>
-            </p>
-            <label class="cs-field">Value
+            <label class="cs-field" th:unless="${form.type() == 'boolean' or form.type() == 'int' or form.type() == 'decimal'}">Value
                 <textarea name="value" rows="4" spellcheck="false" th:text="${form.value()}">true</textarea>
             </label>
+
             <label class="cs-field">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
             </label>
@@ -60,12 +77,14 @@
         </div>
 
         <section class="cs-panel cs-form">
-            <p><span class="cs-muted">Key</span>&nbsp; <code class="cs-key" th:text="${form.key()}">limits.max</code></p>
+            <div class="cs-property-head">
+                <code class="cs-key" th:text="${form.key()}">limits.max</code>
+                <span class="cs-type" th:text="${form.type()}">int</span>
+            </div>
             <div class="cs-compare">
                 <div class="cs-side old">
                     <div class="cs-side-label">Current</div>
-                    <span class="cs-side-value" th:if="${current != null}" th:text="${current}">150</span>
-                    <span class="cs-side-value none" th:if="${current == null}">Not set: this creates the key</span>
+                    <span class="cs-side-value" th:text="${current.value()}">150</span>
                 </div>
                 <div class="arrow"><svg th:replace="~{configstream-admin/layout :: arrow}"></svg></div>
                 <div class="cs-side new">
@@ -82,6 +101,7 @@
         <form method="post" th:action="@{__${configStreamAdminBase}__/services/{name}/update(name=${service.serviceName()})}">
             <input type="hidden" name="key" th:value="${form.key()}">
             <input type="hidden" name="value" th:value="${form.value()}">
+            <input type="hidden" name="type" th:value="${form.type()}">
             <input type="hidden" name="changedBy" th:value="${form.changedBy()}">
             <input type="hidden" name="comment" th:value="${form.comment()}">
             <div class="cs-buttons">

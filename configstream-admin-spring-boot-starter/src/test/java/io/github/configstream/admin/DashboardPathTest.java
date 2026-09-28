@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.configstream.adminhost.AdminHostApplication;
+import io.github.configstream.admin.client.ConfigEntry;
 import io.github.configstream.admin.client.ServiceClient;
 import java.util.Map;
 import java.util.Optional;
@@ -41,7 +42,7 @@ class DashboardPathTest {
         mvc.perform(post("/api/instances").contentType(MediaType.APPLICATION_JSON).content(
                         "{\"serviceName\":\"orders\",\"instanceId\":\"o-1\",\"host\":\"localhost\",\"port\":8080}"))
                 .andExpect(status().isCreated()); // the registration API does not move
-        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", "50"));
+        when(serviceClient.currentConfig("orders")).thenReturn(Map.of("limits.max", new ConfigEntry("int", "50")));
 
         mvc.perform(get("/admin/"))
                 .andExpect(status().isOk())
@@ -62,7 +63,7 @@ class DashboardPathTest {
         mvc.perform(post("/api/instances").contentType(MediaType.APPLICATION_JSON).content(
                         "{\"serviceName\":\"orders\",\"instanceId\":\"o-1\",\"host\":\"localhost\",\"port\":8080}"))
                 .andExpect(status().isCreated());
-        when(serviceClient.update("orders", "limits.max", "75", "alice", null)).thenReturn(Optional.empty());
+        when(serviceClient.update("orders", "limits.max", "75", null, "alice", null)).thenReturn(Optional.empty());
 
         mvc.perform(post("/admin/services/orders/update")
                         .param("key", "limits.max").param("value", "75").param("changedBy", "alice"))

@@ -73,6 +73,17 @@ class ConfigStreamAdminAutoConfigurationTest {
     }
 
     @Test
+    void registrationIncludesTheManifestsProperties() {
+        withAdmin().withPropertyValues("configstream.manifest=classpath:manifests/configstream.yml").run(context -> {
+            await().atMost(WAIT).until(() -> admin.count("POST /api/instances") >= 1);
+
+            assertThat(admin.registrationBodies.get(0)).contains("\"properties\":["
+                    + "{\"key\":\"feature.funds.enabled\",\"type\":\"boolean\",\"description\":\"Show the funds page\"},"
+                    + "{\"key\":\"feature.funds.limit\",\"type\":\"int\",\"description\":null}]");
+        });
+    }
+
+    @Test
     void registersAgainWhenAdminForgetsTheInstance() {
         withAdmin().run(context -> {
             await().atMost(WAIT).until(() -> admin.count("PUT /api/instances/orders-1/heartbeat") >= 1);

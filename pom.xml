@@ -38,6 +38,8 @@
 
     <modules>
         <module>configstream-api</module>
+        <!-- Build-time: generates typed property constants from configstream.yml -->
+        <module>configstream-processor</module>
         <module>configstream-mongo</module>
         <module>configstream-spring-boot-starter</module>
         <!-- Admin server as a starter: add it to any Spring Boot app, plus @EnableConfigStreamAdminServer -->

@@ -8,6 +8,7 @@ import io.github.configstream.api.ConfigChangeSource;
 import io.github.configstream.api.ConfigHistoryEntry;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.PropertyDeclaration;
+import io.github.configstream.api.PropertyId;
 import io.github.configstream.api.PropertyType;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -28,6 +29,9 @@ import org.springframework.context.event.EventListener;
 class ConfigStreamAutoConfigurationTest {
 
     static final ConfigValue ONE = new ConfigValue(PropertyType.INT, 1);
+    static final PropertyId A_KEY = PropertyId.of("a.key", PropertyType.INT);
+    static final PropertyId LIMIT = PropertyId.of("feature.funds.limit", PropertyType.INT);
+    static final PropertyId LIMIT_AS_TEXT = PropertyId.of("feature.funds.limit", PropertyType.STRING);
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class));
@@ -61,7 +65,7 @@ class ConfigStreamAutoConfigurationTest {
         runner.withUserConfiguration(FakeSourceConfig.class).run(context -> {
             assertThat(context).hasNotFailed()
                     .doesNotHaveBean(ConfigStreamAutoConfiguration.ConfigStreamMongoClient.class);
-            assertThat(context.getBean(ConfigService.class).values()).isEqualTo(Map.of("a.key", ONE));
+            assertThat(context.getBean(ConfigService.class).values()).isEqualTo(Map.of(A_KEY, ONE));
         });
     }
 
@@ -71,10 +75,11 @@ class ConfigStreamAutoConfigurationTest {
             assertThat(context).hasNotFailed();
             FakeConfigStore store = context.getBean(FakeConfigStore.class);
             assertThat(store.values).isEqualTo(Map.of(
-                    "feature.funds.enabled", new ConfigValue(PropertyType.BOOLEAN, false),
-                    "feature.funds.limit", new ConfigValue(PropertyType.INT, 3),
-                    "feature.funds.discount-rate", new ConfigValue(PropertyType.DECIMAL, new BigDecimal("0.05"))));
-            assertThat(store.history("feature.funds.limit", 10)).singleElement()
+                    PropertyId.of("feature.funds.enabled", PropertyType.BOOLEAN), new ConfigValue(PropertyType.BOOLEAN, false),
+                    LIMIT, new ConfigValue(PropertyType.INT, 3),
+                    PropertyId.of("feature.funds.discount-rate", PropertyType.DECIMAL),
+                    new ConfigValue(PropertyType.DECIMAL, new BigDecimal("0.05"))));
+            assertThat(store.history(LIMIT, 10)).singleElement()
                     .extracting(ConfigHistoryEntry::version, ConfigHistoryEntry::newValue,
                             ConfigHistoryEntry::changedBy, ConfigHistoryEntry::comment)
                     .containsExactly(1L, "3", "orders (startup)", "Created from FundsProperties");
@@ -85,7 +90,7 @@ class ConfigStreamAutoConfigurationTest {
     void theStartingValueIsWhatSpringBoundLikeApplicationProdYml() {
         // As application-prod.yml would set it when the prod profile is active
         app.withPropertyValues("feature.funds.limit=10").run(context -> {
-            assertThat(context.getBean(FakeConfigStore.class).values.get("feature.funds.limit"))
+            assertThat(context.getBean(FakeConfigStore.class).values.get(LIMIT))
                     .isEqualTo(new ConfigValue(PropertyType.INT, 10));
             assertThat(context.getBean(FundsProperties.class).getLimit()).isEqualTo(10);
         });
@@ -96,16 +101,16 @@ class ConfigStreamAutoConfigurationTest {
         // An earlier deployment created the property, and it was changed to 50 in the admin since
         ConfigValue stored = new ConfigValue(PropertyType.INT, 50);
         runner.withUserConfiguration(FakeStoreConfig.class, FundsConfig.class)
-                .withBean(FakeSource.class, () -> new FakeSource(Map.of("feature.funds.limit", stored)))
+                .withBean(FakeSource.class, () -> new FakeSource(Map.of(LIMIT, stored)))
                 .withBean(EventCollector.class)
                 .withPropertyValues("feature.funds.limit=10")
                 .withInitializer(context -> context.getBeanFactory().addBeanPostProcessor(new PrefillStore(
-                        Map.of("feature.funds.limit", stored))))
+                        Map.of(LIMIT, stored))))
                 .run(context -> {
                     FundsProperties funds = context.getBean(FundsProperties.class);
                     assertThat(funds.getLimit()).isEqualTo(50);
                     assertThat(funds.limitField()).as("the setter was called too").isEqualTo(50);
-                    assertThat(context.getBean(FakeConfigStore.class).history("feature.funds.limit", 10)).isEmpty();
+                    assertThat(context.getBean(FakeConfigStore.class).history(LIMIT, 10)).isEmpty();
                 });
     }
 
@@ -115,18 +120,19 @@ class ConfigStreamAutoConfigurationTest {
             FundsProperties funds = context.getBean(FundsProperties.class);
             FakeSource source = context.getBean(FakeSource.class);
 
-            source.listener.onChange(ConfigChange.upsert("feature.funds.limit", new ConfigValue(PropertyType.INT, 25)));
+            source.listener.onChange(ConfigChange.upsert(LIMIT, new ConfigValue(PropertyType.INT, 25)));
             assertThat(funds.getLimit()).isEqualTo(25);
             assertThat(funds.limitField()).isEqualTo(25);
 
             // Deleted (e.g. by hand in the database): back to the value it was created with
-            source.listener.onChange(ConfigChange.delete("feature.funds.limit"));
+            source.listener.onChange(ConfigChange.delete(LIMIT));
             assertThat(funds.getLimit()).isEqualTo(3);
             assertThat(funds.limitField()).isEqualTo(3);
 
-            // A value of another type is not used
-            source.listener.onChange(ConfigChange.upsert("feature.funds.limit", new ConfigValue(PropertyType.STRING, "x")));
+            // The same key with another type is another property, not this one
+            source.listener.onChange(ConfigChange.upsert(LIMIT_AS_TEXT, new ConfigValue(PropertyType.STRING, "x")));
             assertThat(funds.getLimit()).isEqualTo(3);
+            assertThat(funds.limitField()).isEqualTo(3);
         });
     }
 
@@ -142,15 +148,16 @@ class ConfigStreamAutoConfigurationTest {
             List<ConfigChangedEvent> events = context.getBean(EventCollector.class).events;
             assertThat(events).as("startup load publishes nothing").isEmpty();
 
-            source.listener.onChange(ConfigChange.upsert("a.key", new ConfigValue(PropertyType.INT, 2)));
-            source.listener.onChange(ConfigChange.upsert("a.key", new ConfigValue(PropertyType.INT, 2))); // duplicate
-            source.listener.onChange(ConfigChange.upsert("b.key", new ConfigValue(PropertyType.STRING, "x")));
-            source.listener.onChange(ConfigChange.delete("b.key"));
+            PropertyId b = PropertyId.of("b.key", PropertyType.STRING);
+            source.listener.onChange(ConfigChange.upsert(A_KEY, new ConfigValue(PropertyType.INT, 2)));
+            source.listener.onChange(ConfigChange.upsert(A_KEY, new ConfigValue(PropertyType.INT, 2))); // duplicate
+            source.listener.onChange(ConfigChange.upsert(b, new ConfigValue(PropertyType.STRING, "x")));
+            source.listener.onChange(ConfigChange.delete(b));
 
             assertThat(events).containsExactly(
-                    new ConfigChangedEvent("a.key", 1, 2),
-                    new ConfigChangedEvent("b.key", null, "x"),
-                    new ConfigChangedEvent("b.key", "x", null));
+                    new ConfigChangedEvent("a.key", PropertyType.INT, 1, 2),
+                    new ConfigChangedEvent("b.key", PropertyType.STRING, null, "x"),
+                    new ConfigChangedEvent("b.key", PropertyType.STRING, "x", null));
         });
     }
 
@@ -160,26 +167,45 @@ class ConfigStreamAutoConfigurationTest {
             FakeSource source = context.getBean(FakeSource.class);
             List<ConfigChangedEvent> events = context.getBean(EventCollector.class).events;
             ConfigValue same = new ConfigValue(PropertyType.STRING, "same");
-            source.listener.onChange(ConfigChange.upsert("keep.key", same));
+            PropertyId keep = PropertyId.of("keep.key", PropertyType.STRING);
+            source.listener.onChange(ConfigChange.upsert(keep, same));
             events.clear();
 
-            source.listener.onSnapshot(Map.of("a.key", new ConfigValue(PropertyType.INT, 5), "keep.key", same,
-                    "new.key", new ConfigValue(PropertyType.BOOLEAN, true)));
+            source.listener.onSnapshot(Map.of(A_KEY, new ConfigValue(PropertyType.INT, 5), keep, same,
+                    PropertyId.of("new.key", PropertyType.BOOLEAN), new ConfigValue(PropertyType.BOOLEAN, true)));
 
             assertThat(events).containsExactlyInAnyOrder(
-                    new ConfigChangedEvent("a.key", 1, 5),
-                    new ConfigChangedEvent("new.key", null, true));
+                    new ConfigChangedEvent("a.key", PropertyType.INT, 1, 5),
+                    new ConfigChangedEvent("new.key", PropertyType.BOOLEAN, null, true));
         });
     }
 
     @Test
-    void aTypeChangeStopsStartupWithAnExplanation() {
+    void aTypeChangeCreatesANewPropertyAndLeavesTheOldOneAlone() {
+        // The previous version of the application declared the limit as a string, and still runs (blue-green)
+        ConfigValue old = new ConfigValue(PropertyType.STRING, "lots");
         app.withInitializer(context -> context.getBeanFactory().addBeanPostProcessor(new PrefillStore(
-                        Map.of("feature.funds.limit", new ConfigValue(PropertyType.STRING, "3")))))
+                        Map.of(LIMIT_AS_TEXT, old))))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    FakeConfigStore store = context.getBean(FakeConfigStore.class);
+                    assertThat(store.values).containsEntry(LIMIT_AS_TEXT, old)
+                            .containsEntry(LIMIT, new ConfigValue(PropertyType.INT, 3));
+                    assertThat(context.getBean(FundsProperties.class).getLimit()).isEqualTo(3);
+
+                    LiveConfigRegistry registry = context.getBean(LiveConfigRegistry.class);
+                    assertThat(registry.declares(LIMIT)).isTrue();
+                    assertThat(registry.declares(LIMIT_AS_TEXT)).as("left to the old version").isFalse();
+                });
+    }
+
+    @Test
+    void aKeyDeclaredWithTwoTypesInOneApplicationStopsStartup() {
+        app.withUserConfiguration(OtherFundsConfig.class)
                 .run(context -> assertThat(context).hasFailed().getFailure().rootCause()
-                        .hasMessageContaining("'feature.funds.limit' is stored as string but declared as int "
-                                + "(FundsProperties.getLimit)")
-                        .hasMessageContaining("rename the field"));
+                        .hasMessageContaining("A key can have only one type within an application")
+                        .hasMessageMatching(".*'feature\\.funds\\.limit' is declared as (int and as string in OtherFunds"
+                                + "|string and as int in FundsProperties).*"));
     }
 
     @Test
@@ -194,7 +220,8 @@ class ConfigStreamAutoConfigurationTest {
     void onlyClassesMarkedLiveAreStored() {
         app.withUserConfiguration(NotLiveConfig.class).run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(FakeConfigStore.class).values).doesNotContainKey("app.datasource.url");
+            assertThat(context.getBean(FakeConfigStore.class).values.keySet())
+                    .noneMatch(id -> id.key().startsWith("app.datasource"));
             assertThat(context.getBean(NotLive.class).getUrl()).isEqualTo("jdbc:postgresql://db/orders");
         });
     }
@@ -233,7 +260,7 @@ class ConfigStreamAutoConfigurationTest {
     static class FakeSourceConfig {
         @Bean
         FakeSource fakeSource() {
-            return new FakeSource(Map.of("a.key", ONE));
+            return new FakeSource(Map.of(A_KEY, ONE));
         }
 
         @Bean
@@ -341,8 +368,28 @@ class ConfigStreamAutoConfigurationTest {
     static class NoValueConfig {
     }
 
+    /** Declares a key FundsProperties also declares, with another type. */
+    @ConfigurationProperties("feature.funds")
+    @LiveConfig
+    public static class OtherFunds {
+        private String limit = "many";
+
+        public String getLimit() {
+            return limit;
+        }
+
+        public void setLimit(String limit) {
+            this.limit = limit;
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(OtherFunds.class)
+    static class OtherFundsConfig {
+    }
+
     /** Fills the fake store before the live classes are registered, as if earlier deployments had created values. */
-    record PrefillStore(Map<String, ConfigValue> values) implements BeanPostProcessor {
+    record PrefillStore(Map<PropertyId, ConfigValue> values) implements BeanPostProcessor {
         @Override
         public Object postProcessAfterInitialization(Object bean, String beanName) {
             if (bean instanceof FakeConfigStore store) {
@@ -363,17 +410,17 @@ class ConfigStreamAutoConfigurationTest {
 
     /** Delivers a fixed snapshot; tests then drive changes through {@link #listener}. */
     static class FakeSource implements ConfigChangeSource {
-        private final Map<String, ConfigValue> initial;
+        private final Map<PropertyId, ConfigValue> initial;
         ConfigChangeListener listener;
         boolean stopped;
 
         /** {@code initial} is read on every load, so a live map (such as a fake store's) is followed. */
-        FakeSource(Map<String, ConfigValue> initial) {
+        FakeSource(Map<PropertyId, ConfigValue> initial) {
             this.initial = initial;
         }
 
         @Override
-        public Map<String, ConfigValue> loadInitial() {
+        public Map<PropertyId, ConfigValue> loadInitial() {
             return new HashMap<>(initial);
         }
 

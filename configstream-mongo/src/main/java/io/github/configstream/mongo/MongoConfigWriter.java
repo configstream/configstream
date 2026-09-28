@@ -9,13 +9,13 @@ import com.mongodb.MongoWriteException;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.ReplaceOptions;
 import io.github.configstream.api.ConfigDeletion;
 import io.github.configstream.api.ConfigHistoryEntry;
 import io.github.configstream.api.ConfigUpdate;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.ConfigWriter;
 import io.github.configstream.api.InvalidConfigValueException;
+import io.github.configstream.api.PropertyId;
 import io.github.configstream.api.PropertyNotFoundException;
 import io.github.configstream.api.PropertyType;
 import java.time.Instant;
@@ -23,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.Optional;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +36,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Versions continue across a delete: a property created again later (for example after rolling back to a version
  * of the application that declares it) carries on from its last recorded version.
+ *
+ * <p>Legacy documents (a string {@code _id}) are moved to the current shape, with their value, version and history,
+ * the first time a change touches their key.
  *
  * <p>Changes made directly in the database update caches as usual but are not recorded in the history.
  */
@@ -54,71 +58,66 @@ public class MongoConfigWriter implements ConfigWriter {
     }
 
     @Override
-    public PropertyType createIfAbsent(String key, ConfigValue initial, String changedBy, String comment) {
-        Objects.requireNonNull(key, "key");
+    public boolean createIfAbsent(PropertyId id, ConfigValue initial, String changedBy, String comment) {
+        Objects.requireNonNull(id, "id");
         Objects.requireNonNull(initial, "initial");
         Objects.requireNonNull(changedBy, "changedBy");
-        Document existing = collection.find(eq("_id", key)).first();
-        if (existing != null && !isLeftoverOfDeletion(existing)) {
-            return storedType(existing, initial.type());
+        if (initial.type() != id.type()) {
+            throw new IllegalArgumentException("a " + initial.type().typeName() + " value can't belong to " + id);
+        }
+        moveLegacy(id.key(), id.type());
+        if (collection.find(byId(id)).first() != null) {
+            return false;
         }
         Object stored = MongoValues.toBson(initial);
         try (ClientSession session = client.startSession()) {
             // withTransaction retries the whole body on transient errors such as write conflicts, so when several
             // instances start at once, all but one find the property already there on the retry
             return session.withTransaction(() -> {
-                Document current = collection.find(session, eq("_id", key)).first();
-                if (current != null && !isLeftoverOfDeletion(current)) {
-                    return storedType(current, initial.type());
+                if (collection.find(session, byId(id)).first() != null) {
+                    return false;
                 }
-                long version = Math.max(history.latestVersion(session, key), MongoValues.versionOf(current)) + 1;
-                collection.replaceOne(session, eq("_id", key), new Document("_id", key)
-                        .append(MongoValues.TYPE_FIELD, initial.type().typeName())
+                long version = history.latestVersion(session, id) + 1;
+                collection.insertOne(session, new Document(MongoValues.ID_FIELD, MongoValues.idOf(id))
                         .append(MongoValues.VALUE_FIELD, stored)
-                        .append(MongoValues.VERSION_FIELD, version), new ReplaceOptions().upsert(true));
-                history.insert(session, new ConfigHistoryEntry(key, version, null, initial.text(), changedBy, now(), comment));
-                return initial.type();
+                        .append(MongoValues.VERSION_FIELD, version));
+                history.insert(session, new ConfigHistoryEntry(id.key(), id.type(), version, null, initial.text(),
+                        changedBy, now(), comment));
+                return true;
             });
         } catch (MongoWriteException e) {
             if (e.getError().getCategory() != ErrorCategory.DUPLICATE_KEY) {
                 throw e;
             }
-            // Another instance created it between our read and our insert
-            return storedType(collection.find(eq("_id", key)).first(), initial.type());
+            return false; // another instance created it between our read and our insert
         }
     }
 
     @Override
     public Optional<ConfigHistoryEntry> write(ConfigUpdate update) {
         Objects.requireNonNull(update, "update");
+        moveLegacy(update.id().key(), null);
         try (ClientSession session = client.startSession()) {
             return session.withTransaction(() -> writeInTransaction(session, update));
         }
     }
 
     private Optional<ConfigHistoryEntry> writeInTransaction(ClientSession session, ConfigUpdate update) {
-        Document current = collection.find(session, eq("_id", update.key())).first();
+        PropertyId id = update.id();
+        Document current = collection.find(session, byId(id)).first();
         if (current == null) {
-            throw new PropertyNotFoundException(update.key());
+            throw new PropertyNotFoundException(id);
         }
-        PropertyType type = MongoValues.typeOf(current);
-        if (type == null) {
-            throw new InvalidConfigValueException("Property '" + update.key() + "' has no valid type in the database. "
-                    + "Restart a service that declares it to repair it.");
-        }
-        if (update.type() != null && update.type() != type) {
-            throw new InvalidConfigValueException(InvalidConfigValueException.TYPE_CHANGE_NOT_ALLOWED);
-        }
-        ConfigValue newValue = new ConfigValue(type, type.parse(update.value()));
+        ConfigValue newValue = new ConfigValue(id.type(), id.type().parse(update.value()));
         Object stored = MongoValues.toBson(newValue);
-        ConfigValue oldValue = readOrNull(current);
+        ConfigValue oldValue = readOrNull(current, id.type());
         if (newValue.sameAs(oldValue)) {
             return Optional.empty();
         }
         long version = MongoValues.versionOf(current) + 1;
-        collection.updateOne(session, eq("_id", update.key()),
+        collection.updateOne(session, byId(id),
                 combine(set(MongoValues.VALUE_FIELD, stored), set(MongoValues.VERSION_FIELD, version)));
-        return Optional.of(record(session, new ConfigHistoryEntry(update.key(), version,
+        return Optional.of(record(session, new ConfigHistoryEntry(id.key(), id.type(), version,
                 oldValue != null ? oldValue.text() : MongoValues.rawText(current), newValue.text(),
                 update.changedBy(), now(), update.comment())));
     }
@@ -126,62 +125,83 @@ public class MongoConfigWriter implements ConfigWriter {
     @Override
     public Optional<ConfigHistoryEntry> delete(ConfigDeletion deletion) {
         Objects.requireNonNull(deletion, "deletion");
+        moveLegacy(deletion.id().key(), null);
         try (ClientSession session = client.startSession()) {
             return session.withTransaction(() -> deleteInTransaction(session, deletion));
         }
     }
 
     private Optional<ConfigHistoryEntry> deleteInTransaction(ClientSession session, ConfigDeletion deletion) {
-        Document current = collection.find(session, eq("_id", deletion.key())).first();
+        PropertyId id = deletion.id();
+        Document current = collection.find(session, byId(id)).first();
         if (current == null) {
             return Optional.empty();
         }
-        ConfigValue oldValue = readOrNull(current);
+        ConfigValue oldValue = readOrNull(current, id.type());
         long version = MongoValues.versionOf(current) + 1;
-        collection.deleteOne(session, eq("_id", deletion.key()));
-        return Optional.of(record(session, new ConfigHistoryEntry(deletion.key(), version,
+        collection.deleteOne(session, byId(id));
+        return Optional.of(record(session, new ConfigHistoryEntry(id.key(), id.type(), version,
                 oldValue != null ? oldValue.text() : MongoValues.rawText(current), null,
                 deletion.changedBy(), now(), deletion.comment())));
     }
 
     /**
-     * The type stored for an existing property. A document without a type (for example created by hand) is adopted
-     * as {@code declared} if its value fits, so existing data can be brought under an application's declarations.
+     * Moves the key's legacy document, if any, to the current shape, keeping its value and version and giving its
+     * history entries its type. A legacy document without a type (created by hand, or what earlier versions left
+     * behind when deleting a property) takes {@code declared}, the type the application declares, if its value fits;
+     * with {@code declared} null it is left alone.
+     *
+     * @throws IllegalStateException if a legacy document without a type has a value that doesn't fit {@code declared}
      */
-    private PropertyType storedType(Document doc, PropertyType declared) {
-        PropertyType type = MongoValues.typeOf(doc);
-        if (type != null) {
-            return type;
+    private void moveLegacy(String key, PropertyType declared) {
+        if (collection.find(eq(MongoValues.ID_FIELD, key)).first() == null) {
+            return;
         }
-        Object id = doc.get("_id");
-        ConfigValue adopted;
+        try (ClientSession session = client.startSession()) {
+            session.withTransaction(() -> {
+                Document legacy = collection.find(session, eq(MongoValues.ID_FIELD, key)).first();
+                if (legacy == null) {
+                    return null; // another instance moved it
+                }
+                PropertyType type = MongoValues.legacyTypeOf(legacy);
+                boolean leftoverOfDeletion = type == null && legacy.get(MongoValues.VALUE_FIELD) == null;
+                if (type == null && declared == null) {
+                    return null;
+                }
+                PropertyId id = PropertyId.of(key, type != null ? type : declared);
+                // Delete before inserting: the change stream ignores a legacy delete, then reports the insert
+                collection.deleteOne(session, eq(MongoValues.ID_FIELD, key));
+                if (!leftoverOfDeletion && collection.find(session, byId(id)).first() == null) {
+                    Object value = type != null ? legacy.get(MongoValues.VALUE_FIELD) : adopt(legacy, id);
+                    collection.insertOne(session, new Document(MongoValues.ID_FIELD, MongoValues.idOf(id))
+                            .append(MongoValues.VALUE_FIELD, value)
+                            .append(MongoValues.VERSION_FIELD, MongoValues.versionOf(legacy)));
+                }
+                history.assignLegacyEntries(session, id);
+                return null;
+            });
+        }
+        log.info("Moved property '{}' to the key and type document shape", key);
+    }
+
+    /** A typeless legacy document's value as the declared type, for storage. */
+    private static Object adopt(Document legacy, PropertyId id) {
         try {
-            adopted = MongoValues.read(new Document(doc).append(MongoValues.TYPE_FIELD, declared.typeName()));
+            return MongoValues.toBson(MongoValues.read(legacy, id.type()));
         } catch (InvalidConfigValueException e) {
-            throw new IllegalStateException("Property '" + id + "' exists in the database without a type, and its value "
-                    + "can't be used as " + declared.typeName() + ": " + e.getMessage()
+            throw new IllegalStateException("Property '" + id.key() + "' exists in the database without a type, and its "
+                    + "value can't be used as " + id.type().typeName() + ": " + e.getMessage()
                     + " Fix or delete the document, then restart.", e);
         }
-        collection.updateOne(eq("_id", id), combine(
-                set(MongoValues.TYPE_FIELD, declared.typeName()),
-                set(MongoValues.VALUE_FIELD, MongoValues.toBson(adopted))));
-        log.info("Property '{}' had no type in the database; adopted it as {} as the application declares",
-                id, declared.typeName());
-        return declared;
     }
 
-    /**
-     * A document with neither a type nor a value: what earlier versions of configstream left behind when deleting a
-     * property (they kept the document and its version). It counts as absent, and re-creating the property
-     * continues its versions.
-     */
-    private static boolean isLeftoverOfDeletion(Document doc) {
-        return doc.get(MongoValues.TYPE_FIELD) == null && doc.get(MongoValues.VALUE_FIELD) == null;
+    private static Bson byId(PropertyId id) {
+        return eq(MongoValues.ID_FIELD, MongoValues.idOf(id));
     }
 
-    private static ConfigValue readOrNull(Document doc) {
+    private static ConfigValue readOrNull(Document doc, PropertyType type) {
         try {
-            return MongoValues.read(doc);
+            return MongoValues.read(doc, type);
         } catch (InvalidConfigValueException e) {
             return null; // e.g. edited by hand to a value that doesn't fit its type; the change repairs it
         }

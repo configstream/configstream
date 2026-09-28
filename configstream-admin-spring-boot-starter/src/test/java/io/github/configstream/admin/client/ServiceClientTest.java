@@ -10,6 +10,7 @@ import io.github.configstream.admin.ConfigStreamAdminProperties;
 import io.github.configstream.admin.registry.InstanceRegistration;
 import io.github.configstream.admin.registry.InstanceRegistry;
 import io.github.configstream.api.ConfigHistoryEntry;
+import io.github.configstream.api.PropertyType;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -18,7 +19,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -51,29 +51,32 @@ class ServiceClientTest {
 
     @Test
     void readsCurrentConfigWithTheSecret() throws IOException {
-        int port = fakeService(200, "{\"a\":{\"type\":\"int\",\"value\":\"1\"},\"b\":{\"type\":\"string\",\"value\":\"2\"}}");
+        int port = fakeService(200, "[{\"key\":\"b.key\",\"type\":\"string\",\"value\":\"2\"},"
+                + "{\"key\":\"a.key\",\"type\":\"string\",\"value\":\"x\"},{\"key\":\"a.key\",\"type\":\"int\",\"value\":\"1\"}]");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThat(client.currentConfig("orders")).isEqualTo(Map.of("a", new ConfigEntry("int", "1"), "b", new ConfigEntry("string", "2")));
+        // Sorted by key, then type: the same key can be stored with two types while two versions of the service run
+        assertThat(client.currentConfig("orders")).containsExactly(new ConfigEntry("a.key", "int", "1"),
+                new ConfigEntry("a.key", "string", "x"), new ConfigEntry("b.key", "string", "2"));
     }
 
     @Test
     void readsHistory() throws IOException {
-        ConfigHistoryEntry entry = new ConfigHistoryEntry("a", 2, "1", "2", "alice",
-                Instant.parse("2026-09-25T10:00:00Z"), "why");
+        ConfigHistoryEntry entry = entry(2, "1", "2", "alice", "why");
         int port = fakeService(200, json.writeValueAsString(List.of(entry)));
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThat(client.history("orders", "a", 10)).containsExactly(entry);
+        assertThat(client.history("orders", "a.key", "int", 10)).containsExactly(entry);
+        assertThat(requests).singleElement().extracting(Request::query).isEqualTo("key=a.key&type=int&limit=10");
     }
 
     @Test
     void failsOverToTheNextHealthyInstance() throws IOException {
         registry.register(new InstanceRegistration("orders", "o-1-dead", "localhost", unusedPort(), null, null));
-        int port = fakeService(200, "{\"a\":{\"type\":\"int\",\"value\":\"1\"}}");
+        int port = fakeService(200, "[{\"key\":\"a.key\",\"type\":\"int\",\"value\":\"1\"}]");
         registry.register(new InstanceRegistration("orders", "o-2", "localhost", port, null, null));
 
-        assertThat(client.currentConfig("orders")).containsEntry("a", new ConfigEntry("int", "1"));
+        assertThat(client.currentConfig("orders")).containsExactly(new ConfigEntry("a.key", "int", "1"));
     }
 
     @Test
@@ -106,31 +109,29 @@ class ServiceClientTest {
 
     @Test
     void updatePostsTheChangeAndReturnsTheRecordedEntry() throws IOException {
-        ConfigHistoryEntry entry = new ConfigHistoryEntry("a", 2, "1", "2", "alice",
-                Instant.parse("2026-09-25T10:00:00Z"), "why");
+        ConfigHistoryEntry entry = entry(2, "1", "2", "alice", "why");
         int port = fakeService(200, json.writeValueAsString(entry));
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThat(client.update("orders", "a", "2", "int", "alice", "why")).contains(entry);
+        assertThat(client.update("orders", "a.key", "int", "2", "alice", "why")).contains(entry);
         assertThat(requests).singleElement().satisfies(r -> {
             assertThat(r.path()).isEqualTo("/internal/config/update");
             assertThat(json.readTree(r.body())).isEqualTo(json.readTree(
-                    "{\"key\":\"a\",\"value\":\"2\",\"type\":\"int\",\"changedBy\":\"alice\",\"comment\":\"why\"}"));
+                    "{\"key\":\"a.key\",\"type\":\"int\",\"value\":\"2\",\"changedBy\":\"alice\",\"comment\":\"why\"}"));
         });
     }
 
     @Test
-    void deletePostsTheKeyAndReturnsTheRecordedEntry() throws IOException {
-        ConfigHistoryEntry entry = new ConfigHistoryEntry("a", 3, "2", null, "bob",
-                Instant.parse("2026-09-25T10:00:00Z"), null);
+    void deletePostsTheKeyAndTypeAndReturnsTheRecordedEntry() throws IOException {
+        ConfigHistoryEntry entry = entry(3, "2", null, "bob", null);
         int port = fakeService(200, json.writeValueAsString(entry));
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThat(client.delete("orders", "a", "bob", null)).contains(entry);
+        assertThat(client.delete("orders", "a.key", "int", "bob", null)).contains(entry);
         assertThat(requests).singleElement().satisfies(r -> {
             assertThat(r.path()).isEqualTo("/internal/config/delete");
             assertThat(json.readTree(r.body())).isEqualTo(json.readTree(
-                    "{\"key\":\"a\",\"changedBy\":\"bob\",\"comment\":null}"));
+                    "{\"key\":\"a.key\",\"type\":\"int\",\"changedBy\":\"bob\",\"comment\":null}"));
         });
     }
 
@@ -139,8 +140,8 @@ class ServiceClientTest {
         int port = fakeService(204, "");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThat(client.update("orders", "a", "1", null, "alice", null)).isEmpty();
-        assertThat(client.delete("orders", "a", "alice", null)).isEmpty();
+        assertThat(client.update("orders", "a.key", "int", "1", "alice", null)).isEmpty();
+        assertThat(client.delete("orders", "a.key", "int", "alice", null)).isEmpty();
     }
 
     @Test
@@ -149,7 +150,7 @@ class ServiceClientTest {
         int port = fakeService(204, "");
         registry.register(new InstanceRegistration("orders", "o-2", "localhost", port, null, null));
 
-        assertThat(client.update("orders", "a", "1", null, "alice", null)).isEmpty();
+        assertThat(client.update("orders", "a.key", "int", "1", "alice", null)).isEmpty();
         assertThat(requests).hasSize(1);
     }
 
@@ -157,11 +158,11 @@ class ServiceClientTest {
     void writesDoNotRetryElsewhereAfterAServerError() throws IOException {
         int failing = fakeService(500, "");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", failing, null, null));
-        int healthy = fakeService(200, "{}");
+        int healthy = fakeService(200, "[]");
         registry.register(new InstanceRegistration("orders", "o-2", "localhost", healthy, null, null));
 
         // The first instance may have committed the change before failing, so the outcome is unknown
-        assertThatThrownBy(() -> client.update("orders", "a", "1", null, "alice", null))
+        assertThatThrownBy(() -> client.update("orders", "a.key", "int", "1", "alice", null))
                 .isInstanceOf(ServiceCallException.class)
                 .hasMessageContaining("did not confirm the change")
                 .hasMessageContaining("check the key's history");
@@ -176,7 +177,7 @@ class ServiceClientTest {
         int port = fakeService(400, "");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThatThrownBy(() -> client.update("orders", "a", "1", null, "alice", null))
+        assertThatThrownBy(() -> client.update("orders", "a.key", "int", "1", "alice", null))
                 .isInstanceOf(ServiceCallException.class)
                 .hasMessageContaining("'orders' rejected the request")
                 .hasMessageContaining("400");
@@ -187,20 +188,20 @@ class ServiceClientTest {
         int port = fakeService(400, "{\"error\":\"'abc' is not a valid int.\"}");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThatThrownBy(() -> client.update("orders", "limits.max", "abc", null, "alice", null))
+        assertThatThrownBy(() -> client.update("orders", "limits.max", "int", "abc", "alice", null))
                 .isInstanceOf(ServiceCallException.class)
                 .hasMessage("'orders' rejected the request: 'abc' is not a valid int.");
     }
 
     @Test
     void aMissingPropertyIsNotMistakenForMissingEndpoints() throws IOException {
-        int port = fakeService(404, "{\"error\":\"No property 'brand.new'. Properties are created only when a service "
-                + "that declares them starts.\"}");
+        int port = fakeService(404, "{\"error\":\"No property 'brand.new' of type int. Properties are created only when "
+                + "a service that declares them starts.\"}");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
-        assertThatThrownBy(() -> client.update("orders", "brand.new", "1", null, "alice", null))
-                .hasMessage("'orders' rejected the request: No property 'brand.new'. Properties are created only when a "
-                        + "service that declares them starts.");
+        assertThatThrownBy(() -> client.update("orders", "brand.new", "int", "1", "alice", null))
+                .hasMessage("'orders' rejected the request: No property 'brand.new' of type int. Properties are created "
+                        + "only when a service that declares them starts.");
     }
 
     @Test
@@ -215,7 +216,7 @@ class ServiceClientTest {
     @Test
     void defaultSecretCoversUnlistedServices() throws IOException {
         properties.setDefaultServiceSecret(SECRET);
-        int port = fakeService(200, "{}");
+        int port = fakeService(200, "[]");
         registry.register(new InstanceRegistration("billing", "b-1", "localhost", port, null, null));
 
         assertThat(client.currentConfig("billing")).isEmpty();
@@ -230,6 +231,12 @@ class ServiceClientTest {
                 .hasMessageContaining("No active instance of 'orders' with a reachable address");
     }
 
+    private static ConfigHistoryEntry entry(long version, String oldValue, String newValue, String changedBy,
+            String comment) {
+        return new ConfigHistoryEntry("a.key", PropertyType.INT, version, oldValue, newValue, changedBy,
+                Instant.parse("2026-09-25T10:00:00Z"), comment);
+    }
+
     /**
      * Answers every request with the given status and body, but only if the secret header matches.
      * Records every request it receives in {@link #requests}.
@@ -237,7 +244,7 @@ class ServiceClientTest {
     private int fakeService(int status, String body) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/internal/config", exchange -> {
-            requests.add(new Request(exchange.getRequestURI().getPath(),
+            requests.add(new Request(exchange.getRequestURI().getPath(), exchange.getRequestURI().getQuery(),
                     new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
             boolean authorized = SECRET.equals(exchange.getRequestHeaders().getFirst(ServiceClient.SECRET_HEADER));
             int code = authorized ? status : 401;
@@ -254,7 +261,7 @@ class ServiceClientTest {
         return server.getAddress().getPort();
     }
 
-    private record Request(String path, String body) {
+    private record Request(String path, String query, String body) {
     }
 
     private static int unusedPort() throws IOException {

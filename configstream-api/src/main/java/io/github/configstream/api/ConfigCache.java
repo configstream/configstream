@@ -10,24 +10,24 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ConfigCache implements ConfigChangeListener {
 
-    private final Map<String, ConfigValue> entries = new ConcurrentHashMap<>();
+    private final Map<PropertyId, ConfigValue> entries = new ConcurrentHashMap<>();
 
-    public Optional<ConfigValue> get(String key) {
-        return Optional.ofNullable(entries.get(key));
+    public Optional<ConfigValue> get(PropertyId id) {
+        return Optional.ofNullable(entries.get(id));
     }
 
     /** Immutable point-in-time copy of all entries. */
-    public Map<String, ConfigValue> getAll() {
+    public Map<PropertyId, ConfigValue> getAll() {
         return Map.copyOf(entries);
     }
 
     /** Adds the entry unless there already is one, e.g. for a property just created, before the source reports it. */
-    public void putIfAbsent(String key, ConfigValue value) {
-        entries.putIfAbsent(key, value);
+    public void putIfAbsent(PropertyId id, ConfigValue value) {
+        entries.putIfAbsent(id, value);
     }
 
     @Override
-    public void onSnapshot(Map<String, ConfigValue> snapshot) {
+    public void onSnapshot(Map<PropertyId, ConfigValue> snapshot) {
         // Update in place rather than swapping maps, so readers never see an empty cache mid-reload.
         entries.putAll(snapshot);
         entries.keySet().retainAll(snapshot.keySet());
@@ -36,8 +36,8 @@ public class ConfigCache implements ConfigChangeListener {
     @Override
     public void onChange(ConfigChange change) {
         switch (change.type()) {
-            case UPSERT -> entries.put(change.key(), change.value());
-            case DELETE -> entries.remove(change.key());
+            case UPSERT -> entries.put(change.id(), change.value());
+            case DELETE -> entries.remove(change.id());
         }
     }
 }

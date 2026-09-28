@@ -30,6 +30,7 @@
         <form class="cs-panel cs-form" method="post"
               th:action="@{__${configStreamAdminBase}__/services/{name}/edit/review(name=${service.serviceName()})}">
             <input type="hidden" name="key" th:value="${form.key()}">
+            <input type="hidden" name="type" th:value="${form.type()}">
             <div class="cs-property-head">
                 <code class="cs-key" th:text="${form.key()}">limits.max</code>
                 <span class="cs-type" th:if="${form.type()}" th:text="${form.type()}">int</span>

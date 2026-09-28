@@ -11,6 +11,7 @@ import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigChangeSource;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.InvalidConfigValueException;
+import io.github.configstream.api.PropertyId;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,11 +26,13 @@ import org.slf4j.LoggerFactory;
  * {@link ConfigChangeSource} backed by a MongoDB change stream. Requires a replica set
  * (a single-node one is fine) because change streams read the oplog.
  *
- * <p>Expected document shape, one document per property (see {@link MongoValues}):
- * <pre>{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }</pre>
+ * <p>Expected document shape, one document per property, identified by its key and type (see {@link MongoValues}):
+ * <pre>{ "_id": { "key": "feature.funds.limit", "type": "int" }, "value": 3, "version": 1 }</pre>
  * A document whose value doesn't fit its type (for example after a direct edit in the database) is left out and
  * reported as a delete, so applications fall back to the property's initial value until it is fixed. Documents
- * whose {@code _id} is not a string are ignored.
+ * whose {@code _id} names no valid key and type are ignored. Legacy documents (a string {@code _id} and a
+ * {@code type} field) are read too; deleting one reports nothing, because {@link MongoConfigWriter} deletes them only
+ * while moving them to the current shape.
  *
  * <p><b>Startup race:</b> the change stream is opened <em>before</em> the initial snapshot is read.
  * Anything written while the snapshot loads is held by the open stream (MongoDB keeps it in the
@@ -65,13 +68,13 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
     }
 
     @Override
-    public Map<String, ConfigValue> loadInitial() {
-        Map<String, ConfigValue> entries = new HashMap<>();
+    public Map<PropertyId, ConfigValue> loadInitial() {
+        Map<PropertyId, ConfigValue> entries = new HashMap<>();
         for (Document doc : collection.find()) {
-            String key = keyOf(doc.get("_id"));
-            ConfigValue value = key == null ? null : valueOf(key, doc);
-            if (key != null && value != null) {
-                entries.put(key, value);
+            PropertyId id = idOf(doc);
+            ConfigValue value = id == null ? null : valueOf(id, doc);
+            if (value != null) {
+                entries.put(id, value);
             }
         }
         return entries;
@@ -187,7 +190,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         try {
             listener.onChange(change);
         } catch (RuntimeException e) {
-            log.error("Config listener failed on change to '{}'", change.key(), e);
+            log.error("Config listener failed on change to {}", change.id(), e);
         }
     }
 
@@ -202,17 +205,21 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
                 if (doc == null) {
                     return null; // deleted before the lookup ran; its DELETE event follows
                 }
-                String key = keyOf(doc.get("_id"));
-                if (key == null) {
+                PropertyId id = idOf(doc);
+                if (id == null) {
                     return null;
                 }
-                ConfigValue value = valueOf(key, doc);
-                return value != null ? ConfigChange.upsert(key, value) : ConfigChange.delete(key);
+                ConfigValue value = valueOf(id, doc);
+                return value != null ? ConfigChange.upsert(id, value) : ConfigChange.delete(id);
             }
             case DELETE -> {
                 BsonDocument docKey = event.getDocumentKey();
                 BsonValue id = docKey == null ? null : docKey.get("_id");
-                return id != null && id.isString() ? ConfigChange.delete(id.asString().getValue()) : null;
+                if (id == null || !id.isDocument()) {
+                    return null; // a legacy document, deleted after being moved to the current shape
+                }
+                PropertyId deleted = MongoValues.propertyIdOf(id.asDocument());
+                return deleted == null ? null : ConfigChange.delete(deleted);
             }
             default -> {
                 return null; // DROP/RENAME are followed by INVALIDATE, handled in run()
@@ -220,21 +227,21 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         }
     }
 
-    private static String keyOf(Object id) {
-        if (id instanceof String key) {
-            return key;
+    private static PropertyId idOf(Document doc) {
+        PropertyId id = MongoValues.propertyIdOf(doc);
+        if (id == null) {
+            log.warn("Ignoring config document without a valid key and type: {}", doc.get(MongoValues.ID_FIELD));
         }
-        log.warn("Ignoring config document with non-string _id: {}", id);
-        return null;
+        return id;
     }
 
     /** The document's typed value, or null (with a warning) if it has none that fits its type. */
-    private static ConfigValue valueOf(String key, Document doc) {
+    private static ConfigValue valueOf(PropertyId id, Document doc) {
         try {
-            return MongoValues.read(doc);
+            return MongoValues.read(doc, id.type());
         } catch (InvalidConfigValueException e) {
-            log.warn("Ignoring the stored value of property '{}': {} Applications use its initial value until "
-                    + "it is fixed.", key, e.getMessage());
+            log.warn("Ignoring the stored value of property {}: {} Applications use its initial value until "
+                    + "it is fixed.", id, e.getMessage());
             return null;
         }
     }

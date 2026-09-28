@@ -39,12 +39,13 @@
             <dl class="cs-details" style="border-top: 0; padding-top: 0">
                 <dt>Service</dt><dd th:text="${service.serviceName()}">orders</dd>
                 <dt>Key</dt><dd><code class="cs-key" th:text="${form.key()}">feature.x.enabled</code></dd>
+                <dt>Type</dt><dd><span class="cs-type" th:text="${form.type()}">boolean</span></dd>
                 <th:block th:if="${current != null}">
-                    <dt>Type</dt><dd><span class="cs-type" th:text="${current.type()}">boolean</span></dd>
                     <dt>Current value</dt><dd><span class="cs-value" th:text="${current.value()}">true</span></dd>
                 </th:block>
             </dl>
             <input type="hidden" name="key" th:value="${form.key()}">
+            <input type="hidden" name="type" th:value="${form.type()}">
             <label class="cs-field">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
             </label>

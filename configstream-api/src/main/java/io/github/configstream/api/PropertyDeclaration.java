@@ -19,6 +19,10 @@ public record PropertyDeclaration(String key, PropertyType type, Object initialV
         initialValue = new ConfigValue(type, initialValue).value();
     }
 
+    public PropertyId id() {
+        return new PropertyId(key, type);
+    }
+
     public ConfigValue initial() {
         return new ConfigValue(type, initialValue);
     }

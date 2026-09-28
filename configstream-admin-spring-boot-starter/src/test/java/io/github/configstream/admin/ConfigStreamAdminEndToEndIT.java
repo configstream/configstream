@@ -77,7 +77,7 @@ class ConfigStreamAdminEndToEndIT {
             await().atMost(PROPAGATION).untilAsserted(() -> assertThat(getHtml(adminUrl + "/services/orders"))
                     .contains("Active instances", "feature.x.enabled", "limits.max", "50")
                     .doesNotContain("cs-banner error"));
-            assertThat(getHtml(adminUrl + "/services/orders/history?key=limits.max"))
+            assertThat(getHtml(adminUrl + "/services/orders/history?key=limits.max&type=int"))
                     .contains("v2", "alice", "launch", "v1", "orders (startup)", "(created)", "Created from Limits");
         }
 
@@ -102,53 +102,58 @@ class ConfigStreamAdminEndToEndIT {
 
             // Review first: nothing is written until the change is applied
             assertThat(postForm("/services/payments/edit/review", Map.of(
-                    "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic")))
+                    "key", "limits.max", "type", "int", "value", "75", "changedBy", "carol", "comment", "more traffic")))
                     .satisfies(r -> assertThat(r.statusCode()).isEqualTo(200))
                     .satisfies(r -> assertThat(r.body()).contains("<h1>Review change</h1>", ">10<", ">75<"));
 
             HttpResponse<String> applied = postForm("/services/payments/update", Map.of(
-                    "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic"));
+                    "key", "limits.max", "type", "int", "value", "75", "changedBy", "carol", "comment", "more traffic"));
             assertThat(applied.statusCode()).isEqualTo(302);
             assertThat(applied.headers().firstValue("Location")).get().asString().endsWith("/services/payments");
             await().atMost(PROPAGATION).untilAsserted(() -> {
                 for (String url : instanceUrls) {
-                    assertThat(currentConfigOf(url)).contains("\"limits.max\":{\"type\":\"int\",\"value\":\"75\"}");
+                    assertThat(currentConfigOf(url)).contains("{\"key\":\"limits.max\",\"type\":\"int\",\"value\":\"75\"}");
                 }
             });
-            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max"))
+            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max&type=int"))
                     .contains("v2", "carol", "more traffic");
 
             // A value that doesn't fit the type is rejected by the service, with its reason shown
             assertThat(postForm("/services/payments/update", Map.of(
-                    "key", "limits.max", "value", "lots", "changedBy", "carol")).body())
-                    .contains("Update failed", "is not a valid int.");
+                    "key", "limits.max", "type", "string", "value", "lots", "changedBy", "carol")).body())
+                    .contains("Update failed", "No property &#39;limits.max&#39; of type string");
 
             // Properties are created only by services declaring them
             assertThat(postForm("/services/payments/update", Map.of(
-                    "key", "brand.new", "value", "1", "changedBy", "carol")).body())
+                    "key", "brand.new", "type", "int", "value", "1", "changedBy", "carol")).body())
                     .contains("Update failed", "Properties are created only when a service that declares them starts");
 
             // A declared property is in use, so it can't be deleted
-            assertThat(postForm("/services/payments/delete", Map.of("key", "limits.max", "changedBy", "dave")).body())
-                    .contains("is declared by 2 active instances of payments", "can&#39;t be deleted");
+            assertThat(postForm("/services/payments/delete", Map.of(
+                    "key", "limits.max", "type", "int", "changedBy", "dave")).body())
+                    .contains("(int) is declared by 2 active instances of payments", "can&#39;t be deleted");
 
-            // An orphan (in the store, declared by no instance) can be deleted, and its history stays
-            configCollection("payments").insertOne(new Document("_id", "feature.old.flag")
-                    .append("type", "boolean").append("value", true).append("version", 1L));
-            await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0))).contains("feature.old.flag"));
+            // An orphan (in the store, declared by no instance) can be deleted, and its history stays. Here it is the
+            // same key as a declared property, with another type, as after a type change once the old version stops
+            configCollection("payments").insertOne(new Document("_id", new Document("key", "limits.max").append("type", "string"))
+                    .append("value", "lots").append("version", 1L));
+            await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0)))
+                    .contains("{\"key\":\"limits.max\",\"type\":\"string\",\"value\":\"lots\"}"));
             // The instances registered what their @LiveConfig classes declare, so the admin knows it is an orphan
             assertThat(getHtml(adminUrl + "/services/payments?view=orphans"))
-                    .contains("Orphaned", "<span class=\"cs-type\">boolean</span>", "/services/payments/delete?key=feature.old.flag")
-                    .doesNotContain("/services/payments/delete?key=limits.max", "Add entry");
+                    .contains("Orphaned", "<span class=\"cs-type\">string</span>",
+                            "/services/payments/delete?key=limits.max&amp;type=string")
+                    .doesNotContain("/services/payments/delete?key=limits.max&amp;type=int", "Add entry");
             HttpResponse<String> deleted = postForm("/services/payments/delete", Map.of(
-                    "key", "feature.old.flag", "changedBy", "dave", "comment", "retired"));
+                    "key", "limits.max", "type", "string", "changedBy", "dave", "comment", "retired"));
             assertThat(deleted.statusCode()).isEqualTo(302);
             await().atMost(PROPAGATION).untilAsserted(() -> {
                 for (String url : instanceUrls) {
-                    assertThat(currentConfigOf(url)).doesNotContain("feature.old.flag");
+                    assertThat(currentConfigOf(url)).doesNotContain("\"type\":\"string\",\"value\":\"lots\"")
+                            .contains("{\"key\":\"limits.max\",\"type\":\"int\",\"value\":\"75\"}");
                 }
             });
-            assertThat(getHtml(adminUrl + "/services/payments/history?key=feature.old.flag"))
+            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max&type=string"))
                     .contains("v2", "dave", "(deleted)", "retired");
         }
     }
@@ -182,7 +187,7 @@ class ConfigStreamAdminEndToEndIT {
                 .header("Content-Type", "application/json")
                 .header("X-ConfigStream-Secret", SECRET)
                 .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"key\":\"%s\",\"value\":\"%s\",\"changedBy\":\"alice\",\"comment\":\"launch\"}"
+                        "{\"key\":\"%s\",\"type\":\"int\",\"value\":\"%s\",\"changedBy\":\"alice\",\"comment\":\"launch\"}"
                                 .formatted(key, value)))
                 .build();
         assertThat(http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);

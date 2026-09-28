@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class InstanceRegistryTest {
@@ -116,15 +117,38 @@ class InstanceRegistryTest {
         registry.register(declaring("orders", "green", "feature.new.flag", "limits.max"));
 
         ServiceSummary orders = registry.service("orders").orElseThrow();
-        assertThat(orders.isOrphan("feature.old.flag")).isFalse();
-        assertThat(orders.isOrphan("feature.new.flag")).isFalse();
-        assertThat(orders.isOrphan("feature.gone")).isTrue();
-        assertThat(orders.declaringCount("limits.max")).isEqualTo(2);
-        assertThat(orders.declaredProperties()).containsOnlyKeys("feature.old.flag", "limits.max", "feature.new.flag");
+        assertThat(orders.isOrphan("feature.old.flag", "boolean")).isFalse();
+        assertThat(orders.isOrphan("feature.new.flag", "boolean")).isFalse();
+        assertThat(orders.isOrphan("feature.gone", "boolean")).isTrue();
+        assertThat(orders.declaringCount("limits.max", "boolean")).isEqualTo(2);
+        assertThat(orders.declaredProperties()).extracting(DeclaredProperty::key)
+                .containsExactlyInAnyOrder("feature.old.flag", "limits.max", "feature.new.flag");
 
         // Blue stops: the old flag becomes an orphan
         registry.deregister("blue");
-        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isTrue();
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag", "boolean")).isTrue();
+    }
+
+    @Test
+    void aKeyWhoseTypeChangedIsTwoPropertiesUntilTheOldVersionStops() {
+        // Blue-green: green changed limits.max from int to string
+        registry.register(new InstanceRegistration("orders", "blue", "localhost", 8080, null,
+                List.of(new DeclaredProperty("limits.max", "int", "Old limit"))));
+        registry.register(new InstanceRegistration("orders", "green", "localhost", 8081, null,
+                List.of(new DeclaredProperty("limits.max", "string", "New limit"))));
+
+        ServiceSummary orders = registry.service("orders").orElseThrow();
+        assertThat(orders.declaringCount("limits.max", "int")).isEqualTo(1);
+        assertThat(orders.declaringCount("limits.max", "string")).isEqualTo(1);
+        assertThat(orders.isOrphan("limits.max", "int")).isFalse();
+        assertThat(orders.declaration("limits.max", "string")).get().extracting(DeclaredProperty::description)
+                .isEqualTo("New limit");
+        assertThat(orders.declaredProperties()).hasSize(2);
+
+        registry.deregister("blue");
+        orders = registry.service("orders").orElseThrow();
+        assertThat(orders.isOrphan("limits.max", "int")).isTrue();
+        assertThat(orders.isOrphan("limits.max", "string")).isFalse();
     }
 
     @Test
@@ -133,7 +157,7 @@ class InstanceRegistryTest {
         clock.advance(Duration.ofMinutes(1));
         registry.register(declaring("orders", "green", "feature.new.flag"));
 
-        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isTrue();
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag", "boolean")).isTrue();
     }
 
     @Test
@@ -141,9 +165,10 @@ class InstanceRegistryTest {
         registry.register(declaring("orders", "new", "limits.max"));
         registry.register(instance("orders", "old")); // older configstream: sends no properties
 
-        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag")).isFalse();
+        assertThat(registry.service("orders").orElseThrow().isOrphan("feature.old.flag", "boolean")).isFalse();
     }
 
+    /** An instance declaring the keys, all as booleans. */
     private static InstanceRegistration declaring(String service, String id, String... keys) {
         return new InstanceRegistration(service, id, "localhost", 8080, "team-a",
                 java.util.Arrays.stream(keys).map(k -> new DeclaredProperty(k, "boolean", null)).toList());

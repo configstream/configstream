@@ -23,7 +23,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Write path of the UI. It edits values only: properties are added through each service's manifest, never here,
+ * Write path of the UI. It edits values only: properties are added in each service's code (its {@code @LiveConfig} classes), never here,
  * and their types never change. Every change takes two steps: an edit is checked against the property's type and
  * reviewed against the current value before it is applied; a delete, allowed only for orphans (properties no active
  * instance declares), is confirmed on its own page. Writes go through the service's own internal endpoints, never to
@@ -55,7 +55,7 @@ class ConfigEditController {
         ServiceSummary service = findService(serviceName);
         if (ChangeForm.isBlank(form.key())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "key is required: properties are added in the service's configstream.yml, not here");
+                    "key is required: properties are added in the service's code, not here");
         }
         ChangeForm filled = form.withChangedByDefault(rememberedChangedBy(session));
         ConfigEntry current = currentEntry(serviceName, filled.key(), model).orElse(null);
@@ -200,7 +200,7 @@ class ConfigEditController {
             model.addAttribute("inUse", declaring > 0
                     ? "'" + form.key() + "' is declared by " + declaring + (declaring == 1 ? " active instance" : " active instances")
                             + " of " + service.serviceName() + ", so it is in use and can't be deleted. Remove it from the "
-                            + "service's configstream.yml and deploy that version first; once no running instance declares it, "
+                            + "service's @LiveConfig class and deploy that version first; once no running instance declares it, "
                             + "it is shown as an orphan and can be deleted."
                     : "'" + form.key() + "' can't be deleted yet: not every running instance of " + service.serviceName()
                             + " has reported which properties it uses (instances of an older configstream version don't).");
@@ -236,7 +236,7 @@ class ConfigEditController {
     }
 
     private static String notFound(String key) {
-        return "There is no property '" + key + "'. Properties are added in each service's configstream.yml, not here.";
+        return "There is no property '" + key + "'. Properties are added in each service's code (its @LiveConfig classes), not here.";
     }
 
     /** Why {@code value} isn't valid for {@code typeName}, if it isn't. */

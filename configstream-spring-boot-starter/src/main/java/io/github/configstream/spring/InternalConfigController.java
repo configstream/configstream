@@ -28,8 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Lets the admin app change properties through this service, using this service's own database
  * credentials, so the admin app never holds credentials for every service's database.
  *
- * <p>Changes only edit values: properties are created only from the manifest, their types never change, and a
- * property this instance declares can't be deleted. Rejected changes return 4xx with {@code {"error": "..."}}, a
+ * <p>Changes only edit values: properties are created only when a service declaring them starts, their types never
+ * change, and a property this instance declares can't be deleted. Rejected changes return 4xx with {@code {"error": "..."}}, a
  * message meant for the person who made the change.
  *
  * <p>Guarded by a shared secret for now; OIDC replaces it once the admin app exists.
@@ -45,12 +45,15 @@ class InternalConfigController {
     private static final Logger log = LoggerFactory.getLogger(InternalConfigController.class);
 
     private final ConfigService config;
+    private final LiveConfigRegistry registry;
     private final ConfigWriter writer;
     private final ConfigHistory history;
     private final byte[] secret;
 
-    InternalConfigController(ConfigService config, ConfigWriter writer, ConfigHistory history, String secret) {
+    InternalConfigController(ConfigService config, LiveConfigRegistry registry, ConfigWriter writer, ConfigHistory history,
+            String secret) {
         this.config = config;
+        this.registry = registry;
         this.writer = writer;
         this.history = history;
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
@@ -105,7 +108,7 @@ class InternalConfigController {
     /**
      * Deletes a property this instance doesn't declare (an orphan): it leaves the store and every cache, and its
      * history is kept. Returns 200 with the recorded {@link ConfigHistoryEntry}, 204 if it doesn't exist, or 409 if
-     * this instance's manifest declares it.
+     * one of this instance's {@link LiveConfig} classes declares it.
      */
     @PostMapping("/delete")
     ResponseEntity<?> delete(
@@ -117,9 +120,9 @@ class InternalConfigController {
         if (request == null || isBlank(request.key()) || isBlank(request.changedBy())) {
             return error(HttpStatus.BAD_REQUEST, "key and changedBy are required.");
         }
-        if (config.manifest().declares(request.key())) {
-            return error(HttpStatus.CONFLICT, "'" + request.key() + "' is declared in this service's manifest, so it is "
-                    + "in use and can't be deleted. Remove it from configstream.yml first.");
+        if (registry.declares(request.key())) {
+            return error(HttpStatus.CONFLICT, "'" + request.key() + "' is declared by this service, so it is in use and "
+                    + "can't be deleted. Remove it from the service's @LiveConfig class first.");
         }
         return writer.delete(new ConfigDeletion(request.key(), request.changedBy(), request.comment()))
                 .<ResponseEntity<?>>map(entry -> {
@@ -161,7 +164,7 @@ class InternalConfigController {
 
     /**
      * {@code changedBy} is the admin app's authenticated user; {@code type} (e.g. {@code "int"}) and {@code comment}
-     * are optional. A {@code type} different from the property's is rejected: types come only from the manifest.
+     * are optional. A {@code type} different from the property's is rejected: types come only from the service's code.
      */
     record UpdateRequest(String key, String value, String type, String changedBy, String comment) {
     }

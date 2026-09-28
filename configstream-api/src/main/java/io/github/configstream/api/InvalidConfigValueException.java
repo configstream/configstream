@@ -8,7 +8,7 @@ public class InvalidConfigValueException extends IllegalArgumentException {
 
     /** Returned when a change names a different type than the property was declared with. */
     public static final String TYPE_CHANGE_NOT_ALLOWED =
-            "Type change not allowed. Types are defined in the application manifest.";
+            "Type change not allowed. Types are defined in the application's code.";
 
     public InvalidConfigValueException(String message) {
         super(message);

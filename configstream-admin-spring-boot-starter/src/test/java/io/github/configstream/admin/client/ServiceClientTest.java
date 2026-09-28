@@ -194,13 +194,13 @@ class ServiceClientTest {
 
     @Test
     void aMissingPropertyIsNotMistakenForMissingEndpoints() throws IOException {
-        int port = fakeService(404, "{\"error\":\"No property 'brand.new'. Properties are created only from the "
-                + "application manifest (configstream.yml).\"}");
+        int port = fakeService(404, "{\"error\":\"No property 'brand.new'. Properties are created only when a service "
+                + "that declares them starts.\"}");
         registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
 
         assertThatThrownBy(() -> client.update("orders", "brand.new", "1", null, "alice", null))
-                .hasMessage("'orders' rejected the request: No property 'brand.new'. Properties are created only from "
-                        + "the application manifest (configstream.yml).");
+                .hasMessage("'orders' rejected the request: No property 'brand.new'. Properties are created only when a "
+                        + "service that declares them starts.");
     }
 
     @Test

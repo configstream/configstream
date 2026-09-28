@@ -21,6 +21,11 @@ public class ConfigCache implements ConfigChangeListener {
         return Map.copyOf(entries);
     }
 
+    /** Adds the entry unless there already is one, e.g. for a property just created, before the source reports it. */
+    public void putIfAbsent(String key, ConfigValue value) {
+        entries.putIfAbsent(key, value);
+    }
+
     @Override
     public void onSnapshot(Map<String, ConfigValue> snapshot) {
         // Update in place rather than swapping maps, so readers never see an empty cache mid-reload.

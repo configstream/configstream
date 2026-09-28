@@ -78,7 +78,7 @@ class ConfigStreamAdminEndToEndIT {
                     .contains("Active instances", "feature.x.enabled", "limits.max", "50")
                     .doesNotContain("cs-banner error"));
             assertThat(getHtml(adminUrl + "/services/orders/history?key=limits.max"))
-                    .contains("v2", "alice", "launch", "v1", "orders (manifest)", "(created)", "Created from configstream.yml");
+                    .contains("v2", "alice", "launch", "v1", "orders (startup)", "(created)", "Created from Limits");
         }
 
         // A clean shutdown deregisters the instance
@@ -123,10 +123,10 @@ class ConfigStreamAdminEndToEndIT {
                     "key", "limits.max", "value", "lots", "changedBy", "carol")).body())
                     .contains("Update failed", "is not a valid int.");
 
-            // Properties are created only from the manifest
+            // Properties are created only by services declaring them
             assertThat(postForm("/services/payments/update", Map.of(
                     "key", "brand.new", "value", "1", "changedBy", "carol")).body())
-                    .contains("Update failed", "Properties are created only from the application manifest");
+                    .contains("Update failed", "Properties are created only when a service that declares them starts");
 
             // A declared property is in use, so it can't be deleted
             assertThat(postForm("/services/payments/delete", Map.of("key", "limits.max", "changedBy", "dave")).body())
@@ -136,7 +136,7 @@ class ConfigStreamAdminEndToEndIT {
             configCollection("payments").insertOne(new Document("_id", "feature.old.flag")
                     .append("type", "boolean").append("value", true).append("version", 1L));
             await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0))).contains("feature.old.flag"));
-            // The instances registered what their manifest declares, so the admin knows it is an orphan
+            // The instances registered what their @LiveConfig classes declare, so the admin knows it is an orphan
             assertThat(getHtml(adminUrl + "/services/payments?view=orphans"))
                     .contains("Orphaned", "<span class=\"cs-type\">boolean</span>", "/services/payments/delete?key=feature.old.flag")
                     .doesNotContain("/services/payments/delete?key=limits.max", "Add entry");
@@ -159,7 +159,6 @@ class ConfigStreamAdminEndToEndIT {
                 "--spring.application.name=" + name,
                 NO_MONGO_AUTOCONFIG,
                 "--configstream.team=team-a",
-                "--configstream.manifest=classpath:e2e/configstream.yml",
                 "--configstream.mongo.uri=" + TestMongo.uri(),
                 "--configstream.mongo.database=" + TestMongo.database(),
                 "--configstream.mongo.collection=" + collectionName(name),

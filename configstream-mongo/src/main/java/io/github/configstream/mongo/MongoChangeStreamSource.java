@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * <p>Expected document shape, one document per property (see {@link MongoValues}):
  * <pre>{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }</pre>
  * A document whose value doesn't fit its type (for example after a direct edit in the database) is left out and
- * reported as a delete, so applications fall back to the property's manifest value until it is fixed. Documents
+ * reported as a delete, so applications fall back to the property's initial value until it is fixed. Documents
  * whose {@code _id} is not a string are ignored.
  *
  * <p><b>Startup race:</b> the change stream is opened <em>before</em> the initial snapshot is read.
@@ -233,7 +233,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         try {
             return MongoValues.read(doc);
         } catch (InvalidConfigValueException e) {
-            log.warn("Ignoring the stored value of property '{}': {} Applications use its manifest value until "
+            log.warn("Ignoring the stored value of property '{}': {} Applications use its initial value until "
                     + "it is fixed.", key, e.getMessage());
             return null;
         }

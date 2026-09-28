@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * The type of a property, declared in the manifest. A property's type never changes: to change it, declare
+ * The type of a property, declared by the application. A property's type never changes: to change it, declare
  * the property under a new key.
  *
  * <p>Values are held as {@link Boolean}, {@link Integer}, {@link BigDecimal} or {@link String}.
@@ -25,7 +25,7 @@ public enum PropertyType {
         this.javaType = javaType;
     }
 
-    /** The name used in the manifest and stored in the database, e.g. {@code "int"}. */
+    /** The name stored in the database and shown in the admin app, e.g. {@code "int"}. */
     public String typeName() {
         return typeName;
     }
@@ -34,7 +34,7 @@ public enum PropertyType {
         return javaType;
     }
 
-    /** The type named {@code name} (as written in the manifest), or an exception listing the valid names. */
+    /** The type named {@code name}, or an exception listing the valid names. */
     public static PropertyType fromName(String name) {
         for (PropertyType type : values()) {
             if (type.typeName.equals(name)) {

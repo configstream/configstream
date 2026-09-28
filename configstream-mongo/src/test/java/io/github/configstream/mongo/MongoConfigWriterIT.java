@@ -69,7 +69,7 @@ class MongoConfigWriterIT {
 
     @Test
     void createIfAbsentInsertsThePropertyAndRecordsVersion1() {
-        PropertyType stored = writer.createIfAbsent("limits.max", intValue(3), "orders (manifest)", "Created from configstream.yml");
+        PropertyType stored = writer.createIfAbsent("limits.max", intValue(3), "orders (startup)", "Created from OrdersProperties");
 
         assertThat(stored).isEqualTo(PropertyType.INT);
         assertThat(config.find(eq("_id", "limits.max")).first())
@@ -80,17 +80,17 @@ class MongoConfigWriterIT {
             assertThat(e.version()).isEqualTo(1);
             assertThat(e.oldValue()).isNull();
             assertThat(e.newValue()).isEqualTo("3");
-            assertThat(e.changedBy()).isEqualTo("orders (manifest)");
-            assertThat(e.comment()).isEqualTo("Created from configstream.yml");
+            assertThat(e.changedBy()).isEqualTo("orders (startup)");
+            assertThat(e.comment()).isEqualTo("Created from OrdersProperties");
         });
     }
 
     @Test
     void createIfAbsentNeverChangesAnExistingProperty() {
-        writer.createIfAbsent("limits.max", intValue(3), "orders (manifest)", null);
+        writer.createIfAbsent("limits.max", intValue(3), "orders (startup)", null);
         writer.write(new ConfigUpdate("limits.max", "50", null, "alice", null));
 
-        PropertyType stored = writer.createIfAbsent("limits.max", intValue(10), "orders (manifest)", null);
+        PropertyType stored = writer.createIfAbsent("limits.max", intValue(10), "orders (startup)", null);
 
         assertThat(stored).isEqualTo(PropertyType.INT);
         assertThat(config.find(eq("_id", "limits.max")).first()).containsEntry("value", 50);
@@ -99,9 +99,9 @@ class MongoConfigWriterIT {
 
     @Test
     void createIfAbsentReportsTheStoredTypeWhenTheManifestDeclaresAnother() {
-        writer.createIfAbsent("feature.funds.enabled", new ConfigValue(PropertyType.BOOLEAN, true), "orders (manifest)", null);
+        writer.createIfAbsent("feature.funds.enabled", new ConfigValue(PropertyType.BOOLEAN, true), "orders (startup)", null);
 
-        PropertyType stored = writer.createIfAbsent("feature.funds.enabled", intValue(3), "orders (manifest)", null);
+        PropertyType stored = writer.createIfAbsent("feature.funds.enabled", intValue(3), "orders (startup)", null);
 
         assertThat(stored).isEqualTo(PropertyType.BOOLEAN);
         assertThat(config.find(eq("_id", "feature.funds.enabled")).first()).containsEntry("value", true);
@@ -111,7 +111,7 @@ class MongoConfigWriterIT {
     void instancesStartingTogetherCreateThePropertyOnce() {
         CompletableFuture<?>[] starts = IntStream.range(0, 8)
                 .mapToObj(i -> CompletableFuture.supplyAsync(
-                        () -> writer.createIfAbsent("limits.max", intValue(3), "orders (manifest)", null)))
+                        () -> writer.createIfAbsent("limits.max", intValue(3), "orders (startup)", null)))
                 .toArray(CompletableFuture[]::new);
         CompletableFuture.allOf(starts).join();
 
@@ -123,7 +123,7 @@ class MongoConfigWriterIT {
     void createIfAbsentAdoptsAnUntypedDocumentWhoseValueFits() {
         config.insertOne(new Document("_id", "limits.max").append("value", "25"));
 
-        assertThat(writer.createIfAbsent("limits.max", intValue(3), "orders (manifest)", null)).isEqualTo(PropertyType.INT);
+        assertThat(writer.createIfAbsent("limits.max", intValue(3), "orders (startup)", null)).isEqualTo(PropertyType.INT);
         assertThat(config.find(eq("_id", "limits.max")).first())
                 .containsEntry("type", "int")
                 .containsEntry("value", 25);
@@ -133,7 +133,7 @@ class MongoConfigWriterIT {
     void createIfAbsentRefusesAnUntypedDocumentWhoseValueDoesNotFit() {
         config.insertOne(new Document("_id", "limits.max").append("value", "lots"));
 
-        assertThatThrownBy(() -> writer.createIfAbsent("limits.max", intValue(3), "orders (manifest)", null))
+        assertThatThrownBy(() -> writer.createIfAbsent("limits.max", intValue(3), "orders (startup)", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'lots' is not a valid int");
     }
@@ -143,7 +143,7 @@ class MongoConfigWriterIT {
         // Earlier versions deleted by removing the value but keeping the document and its version
         config.insertOne(new Document("_id", "feature.x.enabled").append("version", 4L));
 
-        assertThat(writer.createIfAbsent("feature.x.enabled", new ConfigValue(PropertyType.BOOLEAN, true), "orders (manifest)", null))
+        assertThat(writer.createIfAbsent("feature.x.enabled", new ConfigValue(PropertyType.BOOLEAN, true), "orders (startup)", null))
                 .isEqualTo(PropertyType.BOOLEAN);
         assertThat(config.find(eq("_id", "feature.x.enabled")).first())
                 .containsEntry("type", "boolean")
@@ -165,7 +165,7 @@ class MongoConfigWriterIT {
 
     @Test
     void recordsEveryChangeWithIncreasingVersions() {
-        writer.createIfAbsent("limits.max", intValue(10), "orders (manifest)", null);
+        writer.createIfAbsent("limits.max", intValue(10), "orders (startup)", null);
         Instant before = Instant.now().minusSeconds(1);
 
         writer.write(new ConfigUpdate("limits.max", "20", null, "bob", "traffic spike"));
@@ -206,7 +206,7 @@ class MongoConfigWriterIT {
     void updatesNeverCreateProperties() {
         assertThatThrownBy(() -> writer.write(new ConfigUpdate("brand.new", "1", null, "alice", null)))
                 .isInstanceOf(PropertyNotFoundException.class)
-                .hasMessageContaining("created only from the application manifest");
+                .hasMessageContaining("created only when a service that declares them starts");
         assertThat(config.countDocuments()).isZero();
     }
 
@@ -228,7 +228,7 @@ class MongoConfigWriterIT {
 
         assertThatThrownBy(() -> writer.write(new ConfigUpdate("feature.funds.enabled", "3", PropertyType.INT, "alice", null)))
                 .isInstanceOf(InvalidConfigValueException.class)
-                .hasMessage("Type change not allowed. Types are defined in the application manifest.");
+                .hasMessage("Type change not allowed. Types are defined in the application's code.");
     }
 
     @Test
@@ -318,7 +318,7 @@ class MongoConfigWriterIT {
         writer.createIfAbsent("limits.max", intValue(1), "t", null);
         writer.delete(new ConfigDeletion("limits.max", "alice", null));
 
-        writer.createIfAbsent("limits.max", intValue(1), "orders (manifest)", "Created from configstream.yml");
+        writer.createIfAbsent("limits.max", intValue(1), "orders (startup)", "Created from OrdersProperties");
 
         assertThat(history.history("limits.max", 10)).extracting(ConfigHistoryEntry::version).containsExactly(3L, 2L, 1L);
         assertThat(config.find(eq("_id", "limits.max")).first()).containsEntry("version", 3L);

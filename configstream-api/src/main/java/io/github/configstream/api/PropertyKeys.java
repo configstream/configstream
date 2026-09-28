@@ -4,8 +4,7 @@ import java.util.regex.Pattern;
 
 /**
  * The rules for property keys: at least two dot-separated segments, each starting with a letter and continuing with
- * letters, digits, {@code -} or {@code _}, e.g. {@code feature.funds.enabled}. Code generation relies on this: the
- * first segment names the class and the rest the constant ({@code Feature.FUNDS_ENABLED}).
+ * letters, digits, {@code -} or {@code _}, e.g. {@code feature.funds.enabled}.
  */
 public final class PropertyKeys {
 

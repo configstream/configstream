@@ -144,14 +144,14 @@ class AdminRegistration implements SmartLifecycle {
 
     /**
      * What this instance tells the admin app about itself. {@code port} and {@code team} may be null.
-     * {@code properties} are the ones its manifest declares, so the admin app can tell which stored properties are
+     * {@code properties} are the live ones its {@link LiveConfig} classes declare, so the admin app can tell which stored properties are
      * still in use (and which are orphans).
      */
     record InstanceInfo(String serviceName, String instanceId, String host, Integer port, String team,
             List<DeclaredProperty> properties) {
     }
 
-    /** A property declared in the manifest, as sent to the admin app. {@code description} may be null. */
+    /** A live property this instance declares, as sent to the admin app. {@code description} may be null. */
     record DeclaredProperty(String key, String type, String description) {
     }
 }

@@ -78,7 +78,7 @@ public class ServiceClient {
     }
 
     /**
-     * Deletes {@code key} through the service; the service refuses keys it declares in its manifest.
+     * Deletes {@code key} through the service; the service refuses keys it declares.
      *
      * @return the recorded history entry, or empty if the key doesn't exist
      */

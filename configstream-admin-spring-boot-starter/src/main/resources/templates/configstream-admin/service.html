@@ -59,7 +59,7 @@
         </div>
         <p class="cs-orphans-lead" th:if="${showOrphans}">No running instance declares these, so nothing reads them. Delete
             them once no version you might roll back to still needs them.</p>
-        <p class="cs-empty" th:if="${rows.isEmpty()}">This service has no properties in use. They are added in its configstream.yml.</p>
+        <p class="cs-empty" th:if="${rows.isEmpty()}">This service has no properties in use. They are added in its code, in @LiveConfig classes.</p>
         <th:block th:unless="${rows.isEmpty()}">
             <div class="cs-row config head"><span>Key</span><span>Type</span><span>Value</span><span></span></div>
             <th:block th:each="p : ${rows}">
@@ -71,7 +71,7 @@
     <div class="cs-note" th:if="${config != null and !config.isEmpty()}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-        <span>Properties are added, renamed and retyped only in the service's configstream.yml. Here you change their
+        <span>Properties are added, renamed and retyped only in the service's code (its @LiveConfig classes). Here you change their
             values.</span>
     </div>
 </main>

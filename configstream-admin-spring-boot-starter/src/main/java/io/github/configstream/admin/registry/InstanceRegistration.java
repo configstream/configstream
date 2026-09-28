@@ -9,7 +9,7 @@ import java.util.List;
  * @param port       may be {@code null} if the instance runs no web server; the admin app then cannot
  *                   call it
  * @param team       may be {@code null}
- * @param properties the properties its manifest declares; {@code null} from instances too old to send them, in which
+ * @param properties the live properties it declares; {@code null} from instances too old to send them, in which
  *                   case no property of the service is treated as an orphan
  */
 public record InstanceRegistration(String serviceName, String instanceId, String host, Integer port, String team,

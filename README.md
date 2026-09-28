@@ -23,10 +23,9 @@ A/B experimentation (see Unleash or LaunchDarkly).
 
 | Module | Purpose |
 |---|---|
-| `configstream-api` | Storage-agnostic contracts, property types, the manifest, in-memory cache |
-| `configstream-processor` | **Build time**: generates typed property constants from `configstream.yml` and checks it |
+| `configstream-api` | Storage-agnostic contracts, property types, in-memory cache |
 | `configstream-mongo` | MongoDB Change Streams backend |
-| `configstream-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
+| `configstream-spring-boot-starter` | **Client**: add to each service. `@LiveConfig`, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
 | `configstream-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigStreamAdminServer`. Service registry + dashboard |
 
 Like Eureka, there is a client starter and a server starter. Every service adds the client; one app, deployed once,
@@ -45,87 +44,62 @@ configstream:
     collection: config        # optional, defaults to "config"
 ```
 
-### Declare properties in `configstream.yml`
+### Make a `@ConfigurationProperties` class live
 
-Every property is declared in `src/main/resources/configstream.yml`, with a type (`boolean`, `int`, `decimal` or
-`string`) and an initial value:
-
-```yaml
-properties:
-  - key: feature.funds.enabled
-    type: boolean
-    initialValue: false
-    description: Show the funds page   # optional
-  - key: feature.funds.limit
-    type: int
-    initialValue: 3
-```
-
-- **The manifest is the only way to add properties.** On startup, each declared property that is missing from
-  MongoDB is created with its initial value, so a first deploy to a new environment finds everything it needs.
-  Existing values are never changed: the initial value only matters the first time.
-- **The stored value always wins.** The initial value is used only while a property is missing from MongoDB or its
-  stored value doesn't fit its type.
-- **Types never change.** Starting a version that declares an existing key with a different type fails with an
-  explanation. To change a type, declare the property under a new key.
-- **Per-environment initial values:** `configstream-prod.yml` next to the manifest can give declared properties a
-  different initial value in prod (`properties: { feature.funds.limit: 10 }`). It is used when
-  `configstream.environment=prod`, e.g. set in `application-prod.yml`. Environment files can't declare new keys.
-
-### Read them through generated constants
-
-Typed constants are generated from the manifest at compile time, so a misspelled key or a value read as the wrong
-type doesn't compile. Add the annotation processor to the build:
-
-```xml
-<!-- Maven: maven-compiler-plugin -->
-<configuration>
-    <annotationProcessorPaths>
-        <path>
-            <groupId>io.github.configstream</groupId>
-            <artifactId>configstream-processor</artifactId>
-            <version>${configstream.version}</version>
-        </path>
-    </annotationProcessorPaths>
-</configuration>
-```
-
-```kotlin
-// Gradle
-annotationProcessor("io.github.configstream:configstream-processor:$configstreamVersion")
-```
-
-and put `@ConfigStreamManifest` on any one class, typically the application class:
+Add `@LiveConfig` to an ordinary `@ConfigurationProperties` class. Code keeps reading it through its getters, as
+before, and gets the current value:
 
 ```java
-@SpringBootApplication
-@ConfigStreamManifest   // packageName = "..." to generate elsewhere; default: this class's package
-public class OrdersApplication { ... }
-```
+@ConfigurationProperties("feature.funds")
+@LiveConfig
+public class FundsProperties {
 
-Each key's first part becomes a class and the rest a constant: `feature.funds.limit` gives `Feature.FUNDS_LIMIT`, a
-`Property<Integer>`. The build fails, naming the file and property, if the manifest or any `configstream-<env>.yml`
-next to it is invalid, or if two keys would generate the same name. After editing only `configstream.yml`, rebuild
-(e.g. `mvn clean compile`, or Rebuild in the IDE): incremental compiles only notice changed `.java` files.
+    /** Show the funds page. */
+    private boolean enabled = false;      // feature.funds.enabled (boolean)
 
-```java
+    /** Maximum funds shown per page. */
+    private int limit = 3;                // feature.funds.limit (int)
+
+    // getters and setters
+}
+
 @Service
-class Checkout {
-    private final ConfigService config;
+class FundsPage {
+    private final FundsProperties funds;
 
-    Checkout(ConfigService config) { this.config = config; }
+    FundsPage(FundsProperties funds) { this.funds = funds; }
 
-    void run() {
-        int limit = config.get(Feature.FUNDS_LIMIT);
-    }
-
-    @EventListener
-    void onChange(ConfigChangedEvent e) {
-        // e.isFor(Feature.FUNDS_LIMIT), e.oldValue(), e.newValue(); fired within ~1s of the change in Mongo
+    List<Fund> show() {
+        return funds.isEnabled() ? loadFunds(funds.getLimit()) : List.of();   // always the live value
     }
 }
 ```
 
+- **Keys, types and starting values come from the class.** Each property's key is the prefix plus the field name in
+  kebab case (`discountRate` gives `feature.funds.discount-rate`); its type is the field's (`boolean`, `int`,
+  `BigDecimal` or `String`); its starting value is what Spring binds: the field's default, or `application.yml`,
+  `application-prod.yml`, environment variables and so on. A typo in code is a compile error, because code reads getters.
+- **Properties are created on startup.** Each one missing from MongoDB is created with its starting value, so a first
+  deploy to a new environment finds everything it needs. Use `application-prod.yml` for values that should start
+  differently in prod.
+- **The stored value always wins.** After a property exists, its value is changed in the admin server; changing
+  `application.yml` no longer affects it. The starting value is used again only while the property is missing from
+  MongoDB or its stored value doesn't fit its type.
+- **Types never change.** Starting a version whose field has a different type than the stored property fails with an
+  explanation. To change a type, rename the field, which gives the property a new key.
+- **Only `@LiveConfig` classes are stored**, so connection details and other ordinary configuration never reach MongoDB.
+  The class can't be final or a record (its getters are served from the live values), and every field needs a value.
+- **Descriptions** shown in the admin server come from the fields' Javadoc, if the build runs Spring Boot's
+  `spring-boot-configuration-processor` (as many projects already do).
+
+Listen for changes with `@EventListener`:
+
+```java
+@EventListener
+void onChange(ConfigChangedEvent e) {
+    // e.key(), e.oldValue(), e.newValue(); fired within ~1s of the change; the getters already return the new value
+}
+```
 Stored as one document per property: `{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }`.
 configstream uses its own connection and does not replace your application's `MongoClient` bean.
 
@@ -159,7 +133,7 @@ configstream:
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
 - **History:** every change made through configstream is appended to `<collection>_history` (key, version, old and
   new value, who, when, comment) in the same transaction as the change itself, starting with v1 "Created from
-  configstream.yml". To **roll back**, write the old value again, e.g. with `"comment": "Reverted to v3"`; history is
+  FundsProperties". To **roll back**, write the old value again, e.g. with `"comment": "Reverted to v3"`; history is
   never rewritten. Changes made directly in the database still reach every cache but are not recorded.
 - **Deletes** remove the property but keep its history. If a version of the service that declares it starts again
   (for example after a rollback), the property is created again with that version's initial value and its versions
@@ -175,9 +149,9 @@ The admin server is the app services register with (`configstream.admin.url`). I
 active instances (those sending heartbeats), each property with its type, value and description, and each property's
 change history. Deploy one per environment.
 
-It **edits values only**. Properties are added, renamed and retyped in each service's `configstream.yml`, so there is
-no Add button, and inputs match the type (true/false buttons for a boolean, a number field for an int). Instances tell
-the admin server which properties their manifest declares when they register; a stored property that no active
+It **edits values only**. Properties are added, renamed and retyped in each service's code (its `@LiveConfig`
+classes), so there is no Add button, and inputs match the type (true/false buttons for a boolean, a number field for an int). Instances tell
+the admin server which properties they declare when they register; a stored property that no active
 instance declares is marked **Orphan**, and only orphans can be deleted.
 
 Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer` does:

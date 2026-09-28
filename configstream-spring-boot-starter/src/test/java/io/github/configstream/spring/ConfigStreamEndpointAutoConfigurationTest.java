@@ -32,10 +32,10 @@ class ConfigStreamEndpointAutoConfigurationTest {
                     ConfigStreamAutoConfiguration.class, ConfigStreamEndpointAutoConfiguration.class,
                     WebMvcAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
                     JacksonAutoConfiguration.class))
+            // FundsProperties declares feature.funds.enabled (boolean), feature.funds.limit (int, initially 3) and
+            // feature.funds.discount-rate (decimal)
             .withUserConfiguration(ConfigStreamAutoConfigurationTest.FakeSourceConfig.class,
-                    ConfigStreamAutoConfigurationTest.FakeStoreConfig.class)
-            // Declares feature.funds.enabled (boolean) and feature.funds.limit (int, initially 3)
-            .withPropertyValues("configstream.manifest=classpath:manifests/configstream.yml");
+                    ConfigStreamAutoConfigurationTest.FakeStoreConfig.class, ConfigStreamAutoConfigurationTest.FundsConfig.class);
 
     @Test
     void offUnlessSecretIsSet() {
@@ -111,8 +111,8 @@ class ConfigStreamEndpointAutoConfigurationTest {
         runWithEndpoint((mvc, store) -> {
             mvc.perform(authorized(update("{\"key\":\"brand.new\",\"value\":\"1\",\"changedBy\":\"alice\"}")))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.error").value("No property 'brand.new'. Properties are created only from "
-                            + "the application manifest (configstream.yml)."));
+                    .andExpect(jsonPath("$.error").value("No property 'brand.new'. Properties are created only when a service "
+                            + "that declares them starts."));
             assertThat(store.values).doesNotContainKey("brand.new");
         });
     }
@@ -135,7 +135,7 @@ class ConfigStreamEndpointAutoConfigurationTest {
             mvc.perform(authorized(update("{\"key\":\"feature.funds.enabled\",\"value\":\"3\",\"type\":\"int\","
                             + "\"changedBy\":\"alice\"}")))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.error").value("Type change not allowed. Types are defined in the application manifest."));
+                    .andExpect(jsonPath("$.error").value("Type change not allowed. Types are defined in the application's code."));
             mvc.perform(authorized(update("{\"key\":\"feature.funds.limit\",\"value\":\"3\",\"type\":\"long\","
                             + "\"changedBy\":\"alice\"}")))
                     .andExpect(status().isBadRequest())
@@ -157,7 +157,7 @@ class ConfigStreamEndpointAutoConfigurationTest {
     @Test
     void deletesAnOrphanAndReturnsTheHistoryEntry() {
         runWithEndpoint((mvc, store) -> {
-            store.createIfAbsent("feature.old.flag", new ConfigValue(PropertyType.BOOLEAN, true), "orders (manifest)", null);
+            store.createIfAbsent("feature.old.flag", new ConfigValue(PropertyType.BOOLEAN, true), "orders (startup)", null);
             String body = "{\"key\":\"feature.old.flag\",\"changedBy\":\"bob\",\"comment\":\"retired\"}";
 
             expect(mvc, delete(body), status().isUnauthorized());
@@ -180,8 +180,8 @@ class ConfigStreamEndpointAutoConfigurationTest {
         runWithEndpoint((mvc, store) -> {
             mvc.perform(authorized(delete("{\"key\":\"feature.funds.limit\",\"changedBy\":\"bob\"}")))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error").value("'feature.funds.limit' is declared in this service's manifest, "
-                            + "so it is in use and can't be deleted. Remove it from configstream.yml first."));
+                    .andExpect(jsonPath("$.error").value("'feature.funds.limit' is declared by this service, so it is in use "
+                            + "and can't be deleted. Remove it from the service's @LiveConfig class first."));
             assertThat(store.values).containsKey("feature.funds.limit");
         });
     }
@@ -208,7 +208,7 @@ class ConfigStreamEndpointAutoConfigurationTest {
                     .andExpect(jsonPath("$.length()").value(3))
                     .andExpect(jsonPath("$[0].version").value(3))
                     .andExpect(jsonPath("$[0].oldValue").value("10"))
-                    .andExpect(jsonPath("$[2].comment").value("Created from configstream.yml"));
+                    .andExpect(jsonPath("$[2].comment").value("Created from FundsProperties"));
             mvc.perform(authorized(get("/internal/config/history").param("key", "feature.funds.limit").param("limit", "1")))
                     .andExpect(jsonPath("$.length()").value(1));
             mvc.perform(authorized(get("/internal/config/history").param("key", "missing.key")))

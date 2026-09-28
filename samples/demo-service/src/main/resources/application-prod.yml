@@ -1,0 +1,4 @@
+# Starting values for live properties created in prod (run with --spring.profiles.active=prod).
+# Only used the first time a property is created; after that its value is changed in the admin.
+limits:
+  max: 500

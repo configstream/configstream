@@ -2,8 +2,6 @@ package io.github.configstream.spring;
 
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Updates.set;
-import static io.github.configstream.spring.ConfigServiceTest.FUNDS_ENABLED;
-import static io.github.configstream.spring.ConfigServiceTest.FUNDS_LIMIT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -61,19 +59,19 @@ class ConfigStreamAutoConfigurationIT {
     void createsDeclaredPropertiesOnStartupAndReflectsLiveUpdates() {
         runner().run(context -> {
             assertThat(context).hasNotFailed();
-            ConfigService config = context.getBean(ConfigService.class);
+            FundsProperties funds = context.getBean(FundsProperties.class);
             var events = context.getBean(ConfigStreamAutoConfigurationTest.EventCollector.class).events;
 
             assertThat(collection.find(eq("_id", "feature.funds.limit")).first())
                     .containsEntry("type", "int").containsEntry("value", 3).containsEntry("version", 1L);
-            assertThat(config.get(FUNDS_LIMIT)).isEqualTo(3);
-            assertThat(config.get(FUNDS_ENABLED)).isFalse();
+            assertThat(funds.getLimit()).isEqualTo(3);
+            assertThat(funds.isEnabled()).isFalse();
             assertThat(events).as("creating properties on startup publishes nothing").isEmpty();
 
             collection.updateOne(eq("_id", "feature.funds.limit"), set("value", 7));
 
             await().atMost(PROPAGATION).untilAsserted(() -> {
-                assertThat(config.get(FUNDS_LIMIT)).isEqualTo(7);
+                assertThat(funds.getLimit()).isEqualTo(7);
                 assertThat(events).containsExactly(new ConfigChangedEvent("feature.funds.limit", 3, 7));
             });
         });
@@ -86,18 +84,19 @@ class ConfigStreamAutoConfigurationIT {
 
         runner().run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(ConfigService.class).get(FUNDS_LIMIT)).isEqualTo(50);
+            assertThat(context.getBean(FundsProperties.class).getLimit()).isEqualTo(50);
         });
         assertThat(history().countDocuments(eq("key", "feature.funds.limit"))).isEqualTo(1);
     }
 
     @Test
-    void anEnvironmentFileSetsTheInitialValue() {
-        runner().withPropertyValues("configstream.environment=prod").run(context -> {
+    void theStartingValueIsWhatSpringBound() {
+        // As application-prod.yml would set it when the prod profile is active
+        runner().withPropertyValues("feature.funds.limit=10").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(collection.find(eq("_id", "feature.funds.limit")).first()).containsEntry("value", 10);
             assertThat(history().find(eq("key", "feature.funds.limit")).first())
-                    .containsEntry("comment", "Created from configstream-prod.yml");
+                    .containsEntry("comment", "Created from FundsProperties");
         });
     }
 
@@ -117,6 +116,7 @@ class ConfigStreamAutoConfigurationIT {
                         ConfigStreamAutoConfiguration.class, ConfigStreamEndpointAutoConfiguration.class,
                         WebMvcAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
                         JacksonAutoConfiguration.class))
+                .withUserConfiguration(ConfigStreamAutoConfigurationTest.FundsConfig.class)
                 .withPropertyValues(properties())
                 .withPropertyValues("configstream.internal.secret=" + secret)
                 .run(context -> {
@@ -135,10 +135,10 @@ class ConfigStreamAutoConfigurationIT {
                     }
 
                     assertThat(collection.find(eq("_id", "feature.funds.limit")).first()).containsEntry("value", 80);
-                    ConfigService config = context.getBean(ConfigService.class);
-                    await().atMost(PROPAGATION).until(() -> config.get(FUNDS_LIMIT) == 80);
+                    FundsProperties funds = context.getBean(FundsProperties.class);
+                    await().atMost(PROPAGATION).until(() -> funds.getLimit() == 80);
 
-                    // History lands in <collection>_history and is served newest first, after the manifest's v1
+                    // History lands in <collection>_history and is served newest first, after the v1 created on startup
                     mvc.perform(get("/internal/config/history")
                                     .header(InternalConfigController.SECRET_HEADER, secret)
                                     .param("key", "feature.funds.limit"))
@@ -148,13 +148,14 @@ class ConfigStreamAutoConfigurationIT {
                             .andExpect(jsonPath("$[0].oldValue").value("50"))
                             .andExpect(jsonPath("$[0].newValue").value("80"))
                             .andExpect(jsonPath("$[0].changedBy").value("alice"))
-                            .andExpect(jsonPath("$[2].changedBy").value("application (manifest)"));
+                            .andExpect(jsonPath("$[2].changedBy").value("application (startup)"));
                 });
     }
 
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class))
+                .withUserConfiguration(ConfigStreamAutoConfigurationTest.FundsConfig.class)
                 .withBean(ConfigStreamAutoConfigurationTest.EventCollector.class)
                 .withPropertyValues(properties());
     }
@@ -163,8 +164,7 @@ class ConfigStreamAutoConfigurationIT {
         return new String[] {
                 "configstream.mongo.uri=" + TestMongo.uri(),
                 "configstream.mongo.database=" + TestMongo.database(),
-                "configstream.mongo.collection=" + collectionName,
-                "configstream.manifest=classpath:manifests/configstream.yml"};
+                "configstream.mongo.collection=" + collectionName};
     }
 
     private MongoCollection<Document> history() {

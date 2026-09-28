@@ -74,14 +74,15 @@ class PropertyTypeTest {
     }
 
     @Test
-    void propertiesValidateTheirKeyAndInitialValue() {
-        Property<Integer> limit = Property.of("feature.funds.limit", Integer.class, 3);
-        assertThat(limit.type()).isEqualTo(PropertyType.INT);
-        assertThat(limit.initialValue()).isEqualTo(3);
-        assertThat(limit).hasToString("feature.funds.limit (int)");
+    void declarationsValidateTheirKeyAndInitialValue() {
+        PropertyDeclaration limit = new PropertyDeclaration("feature.funds.limit", PropertyType.INT, 3, null);
+        assertThat(limit.initial()).isEqualTo(new ConfigValue(PropertyType.INT, 3));
 
-        assertThatThrownBy(() -> Property.of("limit", Integer.class, 3)).hasMessageContaining("at least two dot-separated parts");
-        assertThatThrownBy(() -> Property.of("feature.2x", Integer.class, 3)).hasMessageContaining("Invalid property key");
-        assertThatThrownBy(() -> Property.of("feature.x", Integer.class, null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new PropertyDeclaration("limit", PropertyType.INT, 3, null))
+                .hasMessageContaining("at least two dot-separated parts");
+        assertThatThrownBy(() -> new PropertyDeclaration("feature.2x", PropertyType.INT, 3, null))
+                .hasMessageContaining("Invalid property key");
+        assertThatThrownBy(() -> new PropertyDeclaration("feature.x", PropertyType.INT, "3", null))
+                .hasMessageContaining("must be a Integer");
     }
 }

@@ -73,13 +73,15 @@ class ConfigStreamAdminAutoConfigurationTest {
     }
 
     @Test
-    void registrationIncludesTheManifestsProperties() {
-        withAdmin().withPropertyValues("configstream.manifest=classpath:manifests/configstream.yml").run(context -> {
+    void registrationIncludesTheLiveProperties() {
+        withAdmin().withUserConfiguration(ConfigStreamAutoConfigurationTest.FundsConfig.class).run(context -> {
             await().atMost(WAIT).until(() -> admin.count("POST /api/instances") >= 1);
 
-            assertThat(admin.registrationBodies.get(0)).contains("\"properties\":["
-                    + "{\"key\":\"feature.funds.enabled\",\"type\":\"boolean\",\"description\":\"Show the funds page\"},"
-                    + "{\"key\":\"feature.funds.limit\",\"type\":\"int\",\"description\":null}]");
+            // Descriptions come from the fields' Javadoc, through Spring's configuration metadata
+            assertThat(admin.registrationBodies.get(0)).contains(
+                    "{\"key\":\"feature.funds.enabled\",\"type\":\"boolean\",\"description\":\"Show the funds page.\"}",
+                    "{\"key\":\"feature.funds.limit\",\"type\":\"int\",\"description\":\"Maximum funds shown per page.\"}",
+                    "{\"key\":\"feature.funds.discount-rate\",\"type\":\"decimal\",\"description\":null}");
         });
     }
 

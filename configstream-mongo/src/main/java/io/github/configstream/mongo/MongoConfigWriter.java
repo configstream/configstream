@@ -146,7 +146,7 @@ public class MongoConfigWriter implements ConfigWriter {
 
     /**
      * The type stored for an existing property. A document without a type (for example created by hand) is adopted
-     * as {@code declared} if its value fits, so existing data can be brought under a manifest.
+     * as {@code declared} if its value fits, so existing data can be brought under an application's declarations.
      */
     private PropertyType storedType(Document doc, PropertyType declared) {
         PropertyType type = MongoValues.typeOf(doc);
@@ -165,7 +165,7 @@ public class MongoConfigWriter implements ConfigWriter {
         collection.updateOne(eq("_id", id), combine(
                 set(MongoValues.TYPE_FIELD, declared.typeName()),
                 set(MongoValues.VALUE_FIELD, MongoValues.toBson(adopted))));
-        log.info("Property '{}' had no type in the database; adopted it as {} as declared in the manifest",
+        log.info("Property '{}' had no type in the database; adopted it as {} as the application declares",
                 id, declared.typeName());
         return declared;
     }

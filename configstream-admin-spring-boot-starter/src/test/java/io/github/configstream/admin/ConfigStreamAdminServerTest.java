@@ -231,7 +231,7 @@ class ConfigStreamAdminServerTest {
         mvc.perform(post("/services/orders/edit/review")
                         .param("key", "brand.new").param("value", "1").param("changedBy", "alice"))
                 .andExpect(content().string(allOf(
-                        containsString("Properties are added in each service&#39;s configstream.yml"),
+                        containsString("Properties are added in each service&#39;s code"),
                         not(containsString("<h1>Review change</h1>")))));
     }
 

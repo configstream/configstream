@@ -1,4 +1,0 @@
-properties:
-  - key: feature.funds.limit
-    type: int
-    initialValue: lots

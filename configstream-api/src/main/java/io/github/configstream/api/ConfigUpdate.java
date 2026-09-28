@@ -11,7 +11,7 @@ import java.util.Objects;
  * @param key       the property key
  * @param value     the new value as text, parsed according to the property's type
  * @param type      the type the caller believes the property has; {@code null} to skip the check. A different type
- *                  is rejected: types are defined only by the manifest
+ *                  is rejected: types are defined only by the application's code
  * @param changedBy the authenticated identity making the change, e.g. a user name from the admin app
  * @param comment   optional free-text reason; may be {@code null}
  */

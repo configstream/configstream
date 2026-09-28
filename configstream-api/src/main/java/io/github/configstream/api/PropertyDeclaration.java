@@ -3,7 +3,8 @@ package io.github.configstream.api;
 import java.util.Objects;
 
 /**
- * One property as declared in the manifest.
+ * A live property as an application declares it: its key, its type, the value it is created with and an optional
+ * description. Declarations come from the application's {@code @LiveConfig} classes.
  *
  * @param key          the property key, e.g. {@code feature.funds.limit}
  * @param type         its type
@@ -20,9 +21,5 @@ public record PropertyDeclaration(String key, PropertyType type, Object initialV
 
     public ConfigValue initial() {
         return new ConfigValue(type, initialValue);
-    }
-
-    PropertyDeclaration withInitialValue(Object value) {
-        return new PropertyDeclaration(key, type, value, description);
     }
 }

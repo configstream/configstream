@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * One property as the service page shows it.
  *
- * @param description from the manifest of an instance that declares it; {@code null} if none does or it has none
+ * @param description as declared by an instance (from the field's Javadoc); {@code null} if none does or it has none
  * @param orphan      stored, but declared by no active instance: nothing reads it, and it may be deleted
  */
 public record PropertyRow(String key, String type, String value, String description, boolean orphan) {

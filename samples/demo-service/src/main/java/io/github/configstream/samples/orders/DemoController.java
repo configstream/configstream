@@ -1,5 +1,8 @@
 package io.github.configstream.samples.orders;
 
+import io.github.configstream.samples.orders.config.Checkout;
+import io.github.configstream.samples.orders.config.Feature;
+import io.github.configstream.samples.orders.config.Limits;
 import io.github.configstream.spring.ConfigChangedEvent;
 import io.github.configstream.spring.ConfigService;
 import java.util.LinkedHashMap;
@@ -11,7 +14,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Shows live config values, and logs every change as it arrives. */
+/** Shows live property values, and logs every change as it arrives. */
 @RestController
 class DemoController {
 
@@ -29,9 +32,9 @@ class DemoController {
     Map<String, Object> demo() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("instancePort", port);
-        body.put("feature.x.enabled", config.getBoolean("feature.x.enabled", false));
-        body.put("limits.max", config.get("limits.max", "100"));
-        body.put("allConfig", config.getAll());
+        body.put("feature.x.enabled", config.get(Feature.X_ENABLED));
+        body.put("limits.max", config.get(Limits.MAX));
+        body.put("checkout.banner", config.get(Checkout.BANNER));
         return body;
     }
 

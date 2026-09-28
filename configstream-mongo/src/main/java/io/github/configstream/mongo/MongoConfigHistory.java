@@ -59,6 +59,12 @@ public class MongoConfigHistory implements ConfigHistory {
                 .append("comment", entry.comment()));
     }
 
+    /** The highest version recorded for {@code key}, or 0 if it has no history. */
+    long latestVersion(ClientSession session, String key) {
+        Document latest = collection.find(session, eq("key", key)).sort(descending("version")).limit(1).first();
+        return latest == null ? 0 : latest.get("version", Number.class).longValue();
+    }
+
     private static ConfigHistoryEntry fromDocument(Document doc) {
         return new ConfigHistoryEntry(
                 doc.getString("key"),

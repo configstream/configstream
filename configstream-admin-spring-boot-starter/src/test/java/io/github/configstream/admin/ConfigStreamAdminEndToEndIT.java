@@ -4,10 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
 import io.github.configstream.adminhost.AdminHostApplication;
 import io.github.configstream.admin.registry.InstanceRegistry;
 import io.github.configstream.demoservice.DemoServiceApplication;
+import io.github.configstream.testsupport.TestMongo;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterAll;
@@ -25,30 +27,28 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.testcontainers.containers.MongoDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Real configstream services registering with a real configstream-admin, against a real MongoDB: the admin
- * UI shows their live instances, config and history, and changes made in the UI reach every instance.
+ * Real configstream services registering with a real admin server, against a real MongoDB: services create their
+ * declared properties on startup, the admin UI shows their live instances, values and history, and changes made in
+ * the UI reach every instance. The services declare feature.x.enabled (boolean) and limits.max (int, initially 10).
  */
-@Testcontainers
 class ConfigStreamAdminEndToEndIT {
 
     private static final String SECRET = "0123456789abcdef-e2e-secret";
     private static final String NO_MONGO_AUTOCONFIG =
             "--spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration";
-
-    @Container
-    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:7.0");
+    private static final String RUN = UUID.randomUUID().toString().substring(0, 8);
+    private static final Duration PROPAGATION = Duration.ofSeconds(5);
 
     static final HttpClient http = HttpClient.newHttpClient();
+    static MongoClient mongo;
     static ConfigurableApplicationContext admin;
     static String adminUrl;
 
     @BeforeAll
     static void startAdmin() {
+        mongo = TestMongo.client();
         admin = new SpringApplicationBuilder(AdminHostApplication.class).run(
                 "--server.port=0",
                 "--configstream.enabled=false",
@@ -61,28 +61,24 @@ class ConfigStreamAdminEndToEndIT {
     @AfterAll
     static void stopAdmin() {
         admin.close();
+        mongo.close();
     }
 
     @Test
-    void serviceRegistersAndItsConfigAndHistoryShowUpInTheAdminUi() throws Exception {
-        try (MongoClient mongo = MongoClients.create(MONGO.getReplicaSetUrl())) {
-            mongo.getDatabase("orders").getCollection("config")
-                    .insertOne(new Document("_id", "feature.x.enabled").append("value", "true"));
-        }
+    void serviceCreatesItsPropertiesAndTheyShowUpInTheAdminUi() throws Exception {
         InstanceRegistry registry = admin.getBean(InstanceRegistry.class);
 
-        try (ConfigurableApplicationContext service = startService()) {
+        try (ConfigurableApplicationContext service = startService("orders")) {
             await().atMost(Duration.ofSeconds(10))
                     .until(() -> registry.service("orders").map(s -> s.activeCount() == 1).orElse(false));
-            String serviceUrl = "http://localhost:" + service.getEnvironment().getProperty("local.server.port");
-            updateThroughService(serviceUrl, "limits.max", "50");
+            updateThroughService(urlOf(service), "limits.max", "50");
 
             assertThat(getHtml(adminUrl + "/")).contains("href=\"/services/orders\"", "team-a", "1 active instance");
-            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> assertThat(getHtml(adminUrl + "/services/orders"))
+            await().atMost(PROPAGATION).untilAsserted(() -> assertThat(getHtml(adminUrl + "/services/orders"))
                     .contains("Active instances", "feature.x.enabled", "limits.max", "50")
-                    .doesNotContain("class=\"error\""));
+                    .doesNotContain("cs-banner error"));
             assertThat(getHtml(adminUrl + "/services/orders/history?key=limits.max"))
-                    .contains("v1", "alice", "(created)", "launch");
+                    .contains("v2", "alice", "launch", "v1", "orders (manifest)", "(created)", "Created from configstream.yml");
         }
 
         // A clean shutdown deregisters the instance
@@ -91,11 +87,11 @@ class ConfigStreamAdminEndToEndIT {
     }
 
     /**
-     * The Phase 5B goal: a change made in the admin UI is written by the service, reaches every
-     * instance's cache through the change stream, and shows up in the UI's history. Same for deletes.
+     * A change made in the admin UI is written by the service, reaches every instance's cache through the change
+     * stream, and shows up in the UI's history. Properties can't be added from the UI, and only orphans can be deleted.
      */
     @Test
-    void changesMadeInTheAdminUiReachEveryInstanceAndTheHistory() throws Exception {
+    void changesMadeInTheAdminUiFollowThePropertyRules() throws Exception {
         InstanceRegistry registry = admin.getBean(InstanceRegistry.class);
 
         try (ConfigurableApplicationContext first = startService("payments");
@@ -108,37 +104,49 @@ class ConfigStreamAdminEndToEndIT {
             assertThat(postForm("/services/payments/edit/review", Map.of(
                     "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic")))
                     .satisfies(r -> assertThat(r.statusCode()).isEqualTo(200))
-                    .satisfies(r -> assertThat(r.body()).contains("<h1>Review change</h1>", "this creates the key"));
+                    .satisfies(r -> assertThat(r.body()).contains("<h1>Review change</h1>", ">10<", ">75<"));
 
             HttpResponse<String> applied = postForm("/services/payments/update", Map.of(
                     "key", "limits.max", "value", "75", "changedBy", "carol", "comment", "more traffic"));
             assertThat(applied.statusCode()).isEqualTo(302);
             assertThat(applied.headers().firstValue("Location")).get().asString().endsWith("/services/payments");
-
-            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+            await().atMost(PROPAGATION).untilAsserted(() -> {
                 for (String url : instanceUrls) {
-                    assertThat(currentConfigOf(url)).contains("\"limits.max\":\"75\"");
+                    assertThat(currentConfigOf(url)).contains("\"limits.max\":{\"type\":\"int\",\"value\":\"75\"}");
                 }
             });
             assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max"))
-                    .contains("v1", "carol", "(created)", "more traffic");
+                    .contains("v2", "carol", "more traffic");
 
+            // A value that doesn't fit the type is rejected by the service, with its reason shown
+            assertThat(postForm("/services/payments/update", Map.of(
+                    "key", "limits.max", "value", "lots", "changedBy", "carol")).body())
+                    .contains("Update failed", "is not a valid int.");
+
+            // Properties are created only from the manifest
+            assertThat(postForm("/services/payments/update", Map.of(
+                    "key", "brand.new", "value", "1", "changedBy", "carol")).body())
+                    .contains("Update failed", "Properties are created only from the application manifest");
+
+            // A declared property is in use, so it can't be deleted
+            assertThat(postForm("/services/payments/delete", Map.of("key", "limits.max", "changedBy", "dave")).body())
+                    .contains("Delete failed", "is declared in this service", "can&#39;t be deleted");
+
+            // An orphan (in the store, declared by no instance) can be deleted, and its history stays
+            configCollection("payments").insertOne(new Document("_id", "feature.old.flag")
+                    .append("type", "boolean").append("value", true).append("version", 1L));
+            await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0))).contains("feature.old.flag"));
             HttpResponse<String> deleted = postForm("/services/payments/delete", Map.of(
-                    "key", "limits.max", "changedBy", "dave", "comment", "retired"));
+                    "key", "feature.old.flag", "changedBy", "dave", "comment", "retired"));
             assertThat(deleted.statusCode()).isEqualTo(302);
-
-            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
+            await().atMost(PROPAGATION).untilAsserted(() -> {
                 for (String url : instanceUrls) {
-                    assertThat(currentConfigOf(url)).doesNotContain("limits.max");
+                    assertThat(currentConfigOf(url)).doesNotContain("feature.old.flag");
                 }
             });
-            assertThat(getHtml(adminUrl + "/services/payments/history?key=limits.max"))
-                    .contains("v2", "dave", "(deleted)", "retired", "Restore");
+            assertThat(getHtml(adminUrl + "/services/payments/history?key=feature.old.flag"))
+                    .contains("v2", "dave", "(deleted)", "retired");
         }
-    }
-
-    private static ConfigurableApplicationContext startService() {
-        return startService("orders");
     }
 
     private static ConfigurableApplicationContext startService(String name) {
@@ -147,11 +155,23 @@ class ConfigStreamAdminEndToEndIT {
                 "--spring.application.name=" + name,
                 NO_MONGO_AUTOCONFIG,
                 "--configstream.team=team-a",
-                "--configstream.mongo.uri=" + MONGO.getReplicaSetUrl(name),
+                "--configstream.manifest=classpath:e2e/configstream.yml",
+                "--configstream.mongo.uri=" + TestMongo.uri(),
+                "--configstream.mongo.database=" + TestMongo.database(),
+                "--configstream.mongo.collection=" + collectionName(name),
                 "--configstream.internal.secret=" + SECRET,
                 "--configstream.admin.url=" + adminUrl,
                 "--configstream.admin.heartbeat-interval=200ms",
                 "--configstream.instance.host=localhost");
+    }
+
+    /** One collection per service, as in production; unique per run so reruns against a shared database start clean. */
+    private static String collectionName(String service) {
+        return service + "_config_" + RUN;
+    }
+
+    private static MongoCollection<Document> configCollection(String service) {
+        return mongo.getDatabase(TestMongo.database()).getCollection(collectionName(service));
     }
 
     private static void updateThroughService(String serviceUrl, String key, String value) throws IOException, InterruptedException {

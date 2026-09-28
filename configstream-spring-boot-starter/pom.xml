@@ -69,6 +69,14 @@
             <artifactId>json-path</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- TestMongo: Testcontainers, or an existing replica set via CONFIGSTREAM_TEST_MONGO_URI -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>configstream-mongo</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mongodb</artifactId>

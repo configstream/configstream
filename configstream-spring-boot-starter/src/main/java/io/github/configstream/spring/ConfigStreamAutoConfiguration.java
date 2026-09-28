@@ -8,10 +8,14 @@ import io.github.configstream.api.ConfigCache;
 import io.github.configstream.api.ConfigChangeSource;
 import io.github.configstream.api.ConfigHistory;
 import io.github.configstream.api.ConfigWriter;
+import io.github.configstream.api.Manifest;
 import io.github.configstream.mongo.MongoChangeStreamSource;
 import io.github.configstream.mongo.MongoConfigHistory;
 import io.github.configstream.mongo.MongoConfigWriter;
 import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,10 +23,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.io.ResourceLoader;
 
 /**
- * Wires configstream into a Spring Boot application: connects to the config store, loads it into
- * memory and exposes it as a {@link ConfigService} bean.
+ * Wires configstream into a Spring Boot application: reads the manifest ({@code configstream.yml}), creates the
+ * declared properties missing from the store, loads the store into memory and exposes it as a {@link ConfigService}
+ * bean.
  *
  * <p>Applications can replace the backing store by defining their own {@link ConfigChangeSource}
  * bean (plus a {@link ConfigWriter} if they want the internal update endpoint); the Mongo
@@ -33,15 +40,32 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(ConfigStreamProperties.class)
 public class ConfigStreamAutoConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(ConfigStreamAutoConfiguration.class);
+
+    @Bean
+    @ConditionalOnMissingBean
+    Manifest configStreamManifest(ConfigStreamProperties properties, ResourceLoader resources) {
+        return ManifestLoader.load(resources, properties.getManifest(), properties.getEnvironment());
+    }
+
     /**
-     * Starts watching the store before returning, so the config is fully loaded by the time any
-     * other bean gets the service injected.
+     * Creates missing properties, then starts watching the store before returning, so every declared property
+     * exists and is loaded by the time any other bean gets the service injected.
      */
     @Bean
-    public ConfigService configService(ConfigChangeSource configStreamChangeSource, ApplicationEventPublisher publisher) {
+    public ConfigService configService(ConfigChangeSource configStreamChangeSource, ObjectProvider<ConfigWriter> writer,
+            Manifest manifest, ApplicationEventPublisher publisher, Environment environment) {
+        ConfigWriter configWriter = writer.getIfAvailable();
+        if (configWriter != null) {
+            ManifestSync.createMissing(manifest, configWriter,
+                    environment.getProperty("spring.application.name", "application"));
+        } else if (!manifest.properties().isEmpty()) {
+            log.warn("No ConfigWriter bean, so properties missing from the store are not created; "
+                    + "they use their initial values until they exist.");
+        }
         ConfigCache cache = new ConfigCache();
         configStreamChangeSource.start(new EventPublishingListener(cache, publisher));
-        return new ConfigService(cache);
+        return new ConfigService(cache, manifest);
     }
 
     @Configuration(proxyBeanMethods = false)

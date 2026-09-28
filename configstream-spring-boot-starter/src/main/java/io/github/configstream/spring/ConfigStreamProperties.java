@@ -13,6 +13,19 @@ public class ConfigStreamProperties {
     /** Team that owns this service, e.g. {@code team-a}. The admin app uses it to decide who can see it. */
     private String team;
 
+    /**
+     * The manifest declaring this application's properties. On startup, each declared property missing from the
+     * store is created with its initial value; existing values are never changed.
+     */
+    private String manifest = "classpath:configstream.yml";
+
+    /**
+     * The environment this instance runs in, e.g. {@code prod}. If set, initial values from
+     * {@code configstream-<environment>.yml} (next to the manifest) replace the manifest's, for properties created
+     * in this environment. Set it explicitly, e.g. in {@code application-prod.yml}.
+     */
+    private String environment;
+
     private final Mongo mongo = new Mongo();
 
     private final Internal internal = new Internal();
@@ -35,6 +48,22 @@ public class ConfigStreamProperties {
 
     public void setTeam(String team) {
         this.team = team;
+    }
+
+    public String getManifest() {
+        return manifest;
+    }
+
+    public void setManifest(String manifest) {
+        this.manifest = manifest;
+    }
+
+    public String getEnvironment() {
+        return environment;
+    }
+
+    public void setEnvironment(String environment) {
+        this.environment = environment;
     }
 
     public Mongo getMongo() {

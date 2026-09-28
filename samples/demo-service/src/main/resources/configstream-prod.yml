@@ -1,0 +1,3 @@
+# Initial values for properties created in prod (select with configstream.environment=prod).
+properties:
+  limits.max: 500

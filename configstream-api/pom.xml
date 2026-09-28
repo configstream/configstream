@@ -12,7 +12,14 @@
 
     <artifactId>configstream-api</artifactId>
     <name>configstream-api</name>
-    <description>Storage-agnostic contracts and in-memory cache for configstream.</description>
+    <description>Storage-agnostic contracts, property types, the manifest and the in-memory cache for configstream.</description>
 
-    <!-- Intentionally dependency-free (besides test deps): backend modules depend on this, not vice versa -->
+    <!-- Kept minimal: backend modules depend on this, not vice versa -->
+    <dependencies>
+        <!-- Reads the manifest (configstream.yml); the build-time code generator uses it too -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+    </dependencies>
 </project>

@@ -87,6 +87,32 @@ class ConfigStreamAdminServerTest {
     }
 
     @Test
+    void dashboardSearchesServicesByNameOrTeam() throws Exception {
+        register("orders", "o-1", 8080);
+        register("billing", "b-1", 8081);
+
+        // Every card is sent; the ones that don't match are hidden, so typing can widen the search again
+        mvc.perform(get("/").param("q", " BILL "))
+                .andExpect(content().string(allOf(
+                        containsString("href=\"/services/billing\" data-cs-search=\"billing team-a\">"),
+                        containsString("href=\"/services/orders\" data-cs-search=\"orders team-a\" hidden=\"hidden\">"),
+                        containsString("value=\"BILL\""),
+                        containsString("1 of 2 services"))));
+        mvc.perform(get("/").param("q", "team-a"))
+                .andExpect(content().string(allOf(
+                        containsString("2 of 2 services"),
+                        not(containsString("team-a\" hidden=\"hidden\">")))));
+        mvc.perform(get("/").param("q", "nothing-like-this"))
+                .andExpect(content().string(allOf(
+                        containsString("0 of 2 services"),
+                        containsString("No services match &#39;nothing-like-this&#39;."))));
+        mvc.perform(get("/"))
+                .andExpect(content().string(allOf(
+                        containsString("2 services"),
+                        containsString("data-cs-service-nomatch hidden=\"hidden\""))));
+    }
+
+    @Test
     void servicePageShowsInstancesAndTypedProperties() throws Exception {
         register("orders", "o-1", 8080);
         when(serviceClient.currentConfig("orders")).thenReturn(config());

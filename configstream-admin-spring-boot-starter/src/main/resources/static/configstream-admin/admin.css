@@ -313,6 +313,10 @@ p { margin: 0; }
 .cs-act.danger { color: var(--danger); }
 .cs-act.danger:hover { background: var(--danger-soft); }
 
+/* Services page header: title on the left, search on the right */
+.cs-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cs-service-search { display: flex; align-items: center; gap: 12px; }
+.cs-service-search .cs-search input { width: 320px; height: 40px; background: var(--panel); }
 /* Service cards */
 
 .cs-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
@@ -523,7 +527,8 @@ p { margin: 0; }
     .cs-row.head { display: none; }
     .cs-actions { justify-content: flex-start; }
     .cs-panel-head { flex-wrap: wrap; }
-    .cs-search, .cs-search input { width: 100%; }
+    .cs-search, .cs-search input, .cs-service-search, .cs-service-search .cs-search input { width: 100%; }
+    .cs-service-search { flex-wrap: wrap; }
     .cs-compare { grid-template-columns: 1fr; }
     .cs-compare .arrow { transform: rotate(90deg); }
     .cs-details { grid-template-columns: 1fr; gap: 2px; }

@@ -4,19 +4,38 @@
 <body>
 <header th:replace="~{configstream-admin/layout :: header}"></header>
 <main class="cs-main">
-    <div>
-        <h1>Services</h1>
-        <p class="cs-lead">Pick a service to view and change its live config.</p>
+    <div class="cs-page-head">
+        <div>
+            <h1>Services</h1>
+            <p class="cs-lead">Pick a service to view and change its live config.</p>
+        </div>
+        <!--/* A plain GET form, so a search works without JavaScript and can be linked to; admin.js also filters as you type */-->
+        <form class="cs-service-search" method="get" role="search" th:action="@{__${configStreamAdminBase}__/}"
+              th:unless="${totalServices == 0}">
+            <label class="cs-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" name="q" th:value="${query}" placeholder="Search services or teams"
+                       aria-label="Search services or teams" autocomplete="off" data-cs-service-filter>
+            </label>
+            <span class="cs-muted" data-cs-service-count
+                  th:text="${query.isEmpty() ? (totalServices == 1 ? '1 service' : totalServices + ' services')
+                          : matches.size() + ' of ' + totalServices + ' services'}">12 of 1000 services</span>
+        </form>
     </div>
 
-    <div class="cs-note" th:if="${services.isEmpty()}">
+    <div class="cs-note" th:if="${totalServices == 0}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
         <span>No services registered yet. Set <code>configstream.admin.url</code> on a service to point at this app.</span>
     </div>
 
+    <p class="cs-empty cs-panel" data-cs-service-nomatch th:hidden="${!matches.isEmpty() or totalServices == 0}"
+       th:text="|No services match '${query}'.|">No services match 'pay'.</p>
+
     <div class="cs-cards" th:unless="${services.isEmpty()}">
-        <a class="cs-card" th:each="s : ${services}"
+        <a class="cs-card" th:each="s : ${services}" th:attr="data-cs-search=${s.serviceName() + ' ' + (s.team() ?: '')}"
+           th:hidden="${!matches.contains(s.serviceName())}"
            th:href="@{__${configStreamAdminBase}__/services/{name}(name=${s.serviceName()})}">
             <div class="cs-card-body">
                 <div class="cs-title">

@@ -9,6 +9,8 @@ import io.github.configstream.api.ConfigHistoryEntry;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.PropertyDeclaration;
 import io.github.configstream.api.PropertyType;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.HashMap;
@@ -20,10 +22,14 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
+import org.springframework.core.io.ClassPathResource;
 
 class ConfigStreamAutoConfigurationTest {
 
@@ -200,6 +206,73 @@ class ConfigStreamAutoConfigurationTest {
     }
 
     @Test
+    void aMistypedKeyStopsStartupBeforeAnythingIsCreated() {
+        FakeConfigStore store = new FakeConfigStore();
+        runner.withUserConfiguration(FundsConfig.class)
+                .withBean(FakeConfigStore.class, () -> store)
+                .withBean(FakeSource.class, () -> new FakeSource(store.values))
+                .withPropertyValues("spring.application.name=orders", "feature.funds.limt=10")
+                .run(context -> assertThat(context).hasFailed().getFailure().rootCause()
+                        .hasMessageContaining("FundsProperties (@LiveConfig) has no property for 'feature.funds.limt'")
+                        .hasMessageContaining("did you mean 'feature.funds.limit'?")
+                        .hasMessageContaining("Fix or remove the setting"));
+
+        // Otherwise the limit would have been created with 3, the field's default, instead of the intended 10
+        assertThat(store.values).isEmpty();
+    }
+
+    @Test
+    void theMessageSaysWhereTheMistypedKeyIsSet() {
+        app.withInitializer(context -> {
+                    try {
+                        new YamlPropertySourceLoader()
+                                .load("live-typo", new ClassPathResource("live-typo.yml"))
+                                .forEach(context.getEnvironment().getPropertySources()::addFirst);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                })
+                .run(context -> assertThat(context).hasFailed().getFailure().rootCause()
+                        .hasMessageContaining("'feature.funds.discount-rat' (set in class path resource [live-typo.yml] - 3:19)")
+                        .hasMessageContaining("did you mean 'feature.funds.discount-rate'?")
+                        .hasMessageContaining("'feature.funds.nothing-like-this' (set in class path resource [live-typo.yml] - 4:24)")
+                        .hasMessageContaining("Fix or remove these settings"));
+    }
+
+    @Test
+    void acceptsEveryWaySpringBindsAKey() {
+        app.withPropertyValues("feature.funds.discountRate=0.1", "feature.funds.LIMIT=4").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(FundsProperties.class).getLimit()).isEqualTo(4);
+        });
+        // Environment variables drop the dashes: FEATURE_FUNDS_DISCOUNTRATE is feature.funds.discount-rate
+        app.withInitializer(context -> context.getEnvironment().getPropertySources().addFirst(
+                        new SystemEnvironmentPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                                Map.of("FEATURE_FUNDS_DISCOUNTRATE", "0.2", "FEATURE_FUNDS_ENABLED", "true"))))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(FundsProperties.class).getDiscountRate()).isEqualByComparingTo("0.2");
+                });
+    }
+
+    @Test
+    void keysOfAnotherConfigurationClassUnderThePrefixAreLeftToIt() {
+        app.withUserConfiguration(FundsHttpConfig.class)
+                .withPropertyValues("feature.funds.http.url=https://funds.example")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(FundsHttp.class).getUrl()).isEqualTo("https://funds.example");
+                });
+    }
+
+    @Test
+    void suggestsOnlyCloseKeys() {
+        assertThat(UnknownKeyCheck.distance("feature.funds.limt", "feature.funds.limit")).isEqualTo(1);
+        assertThat(UnknownKeyCheck.distance("abc", "abc")).isZero();
+        assertThat(UnknownKeyCheck.distance("", "abc")).isEqualTo(3);
+    }
+
+    @Test
     void worksWithoutAWriterUsingTheBoundValues() {
         runner.withUserConfiguration(FakeSourceConfig.class, FundsConfig.class).run(context -> {
             assertThat(context).hasNotFailed();
@@ -291,6 +364,25 @@ class ConfigStreamAutoConfigurationTest {
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(NotLive.class)
     static class NotLiveConfig {
+    }
+
+    /** Ordinary configuration nested under FundsProperties' prefix. */
+    @ConfigurationProperties("feature.funds.http")
+    public static class FundsHttp {
+        private String url = "http://localhost";
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(FundsHttp.class)
+    static class FundsHttpConfig {
     }
 
     @ConfigurationProperties("orders.http")

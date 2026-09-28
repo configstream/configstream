@@ -19,6 +19,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,14 +50,14 @@ public class ConfigStreamAutoConfiguration {
 
     @Bean
     LiveConfigRegistry configStreamLiveConfigRegistry(ConfigService config, ObjectProvider<ConfigWriter> writer,
-            Environment environment, ResourceLoader resources) {
+            Environment environment, ResourceLoader resources, ApplicationContext context) {
         ConfigWriter configWriter = writer.getIfAvailable();
         if (configWriter == null) {
             log.warn("No ConfigWriter bean, so live properties missing from the store are not created; "
                     + "they use their bound values until they exist.");
         }
         return new LiveConfigRegistry(config, configWriter, environment.getProperty("spring.application.name", "application"),
-                PropertyDescriptions.load(resources.getClassLoader()));
+                PropertyDescriptions.load(resources.getClassLoader()), new UnknownKeyCheck(environment, context));
     }
 
     /** Makes each {@link LiveConfig} bean live once Spring has bound it. Static, as bean post-processors should be. */

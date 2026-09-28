@@ -29,6 +29,7 @@ public class LiveConfigRegistry {
     private final ConfigWriter writer;
     private final String serviceName;
     private final Map<String, String> descriptions;
+    private final UnknownKeyCheck unknownKeys;
 
     private final Map<String, PropertyDeclaration> declarations = new ConcurrentHashMap<>();
     private final Map<String, List<Binding>> bindings = new ConcurrentHashMap<>();
@@ -37,12 +38,15 @@ public class LiveConfigRegistry {
      * @param writer       creates missing properties; {@code null} if the store is read-only here, in which case they
      *                     use their bound values until they exist
      * @param descriptions property descriptions by key, shown in the admin app
+     * @param unknownKeys  rejects settings under a live class's prefix that match none of its properties
      */
-    LiveConfigRegistry(ConfigService config, ConfigWriter writer, String serviceName, Map<String, String> descriptions) {
+    LiveConfigRegistry(ConfigService config, ConfigWriter writer, String serviceName, Map<String, String> descriptions,
+            UnknownKeyCheck unknownKeys) {
         this.config = config;
         this.writer = writer;
         this.serviceName = serviceName;
         this.descriptions = descriptions;
+        this.unknownKeys = unknownKeys;
     }
 
     /** Every live property this application declares. */
@@ -58,10 +62,13 @@ public class LiveConfigRegistry {
      * Makes {@code bean}, a bound {@link LiveConfig} class, live and returns what the application should use in its
      * place: a proxy whose getters return the live values.
      *
-     * @throws IllegalStateException if the class can't be live, or a property's type differs from the stored one
+     * @throws IllegalStateException if the class can't be live, the configuration sets a key under its prefix that it
+     *     has no property for, or a property's type differs from the stored one
      */
     Object register(Object bean, Class<?> type) {
         LiveConfigClass liveClass = LiveConfigClass.of(type, bean, descriptions);
+        // Before anything is created: a mistyped key would otherwise create the property with the wrong value
+        unknownKeys.verify(liveClass);
         List<String> typeChanges = new ArrayList<>();
         Map<Method, String> getters = new ConcurrentHashMap<>();
         for (LiveConfigClass.LiveProperty property : liveClass.properties()) {

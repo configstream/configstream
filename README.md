@@ -87,6 +87,10 @@ class FundsPage {
   MongoDB or its stored value doesn't fit its type.
 - **Types never change.** Starting a version whose field has a different type than the stored property fails with an
   explanation. To change a type, rename the field, which gives the property a new key.
+- **Typos in configuration files stop startup.** A setting under a `@LiveConfig` prefix that matches none of the
+  class's fields, such as `feature.funds.limt` in `application-prod.yml`, fails startup with the file, line and the
+  likely intended key, before anything is created. (Spring alone would ignore it, and the property would start from
+  another value.) Relaxed spellings Spring accepts, like `discountRate` or `FEATURE_FUNDS_DISCOUNTRATE`, are fine.
 - **Only `@LiveConfig` classes are stored**, so connection details and other ordinary configuration never reach MongoDB.
   The class can't be final or a record (its getters are served from the live values), and every field needs a value.
 - **Descriptions** shown in the admin server come from the fields' Javadoc, if the build runs Spring Boot's

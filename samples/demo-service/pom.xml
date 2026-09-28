@@ -31,10 +31,31 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- Only so the reactor builds the processor before this module; it runs from annotationProcessorPaths below -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>configstream-processor</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <!-- Generates Feature, Limits, Checkout... from src/main/resources/configstream.yml -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>${project.groupId}</groupId>
+                            <artifactId>configstream-processor</artifactId>
+                            <version>${project.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <!-- Builds a runnable jar: java -jar target/demo-service-0.1.0-SNAPSHOT.jar -->
                 <groupId>org.springframework.boot</groupId>

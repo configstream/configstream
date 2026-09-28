@@ -23,7 +23,8 @@ A/B experimentation (see Unleash or LaunchDarkly).
 
 | Module | Purpose |
 |---|---|
-| `configstream-api` | Storage-agnostic contracts + in-memory cache |
+| `configstream-api` | Storage-agnostic contracts, property types, the manifest, in-memory cache |
+| `configstream-processor` | **Build time**: generates typed property constants from `configstream.yml` and checks it |
 | `configstream-mongo` | MongoDB Change Streams backend |
 | `configstream-spring-boot-starter` | **Client**: add to each service. `ConfigService` bean, `ConfigChangedEvent`, internal endpoints, registration with the admin server |
 | `configstream-admin-spring-boot-starter` | **Server**: add to one Spring Boot app, plus `@EnableConfigStreamAdminServer`. Service registry + dashboard |
@@ -71,14 +72,43 @@ properties:
   different initial value in prod (`properties: { feature.funds.limit: 10 }`). It is used when
   `configstream.environment=prod`, e.g. set in `application-prod.yml`. Environment files can't declare new keys.
 
-Read properties through typed constants, so a misspelled key or a value read as the wrong type doesn't compile.
-Generating them from the manifest is coming; until then they look like this:
+### Read them through generated constants
+
+Typed constants are generated from the manifest at compile time, so a misspelled key or a value read as the wrong
+type doesn't compile. Add the annotation processor to the build:
+
+```xml
+<!-- Maven: maven-compiler-plugin -->
+<configuration>
+    <annotationProcessorPaths>
+        <path>
+            <groupId>io.github.configstream</groupId>
+            <artifactId>configstream-processor</artifactId>
+            <version>${configstream.version}</version>
+        </path>
+    </annotationProcessorPaths>
+</configuration>
+```
+
+```kotlin
+// Gradle
+annotationProcessor("io.github.configstream:configstream-processor:$configstreamVersion")
+```
+
+and put `@ConfigStreamManifest` on any one class, typically the application class:
 
 ```java
-public final class Feature {
-    public static final Property<Integer> FUNDS_LIMIT = Property.of("feature.funds.limit", Integer.class, 3);
-}
+@SpringBootApplication
+@ConfigStreamManifest   // packageName = "..." to generate elsewhere; default: this class's package
+public class OrdersApplication { ... }
+```
 
+Each key's first part becomes a class and the rest a constant: `feature.funds.limit` gives `Feature.FUNDS_LIMIT`, a
+`Property<Integer>`. The build fails, naming the file and property, if the manifest or any `configstream-<env>.yml`
+next to it is invalid, or if two keys would generate the same name. After editing only `configstream.yml`, rebuild
+(e.g. `mvn clean compile`, or Rebuild in the IDE): incremental compiles only notice changed `.java` files.
+
+```java
 @Service
 class Checkout {
     private final ConfigService config;

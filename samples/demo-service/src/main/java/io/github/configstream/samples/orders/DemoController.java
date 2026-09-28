@@ -1,8 +1,5 @@
 package io.github.configstream.samples.orders;
 
-import io.github.configstream.samples.orders.config.Checkout;
-import io.github.configstream.samples.orders.config.Feature;
-import io.github.configstream.samples.orders.config.Limits;
 import io.github.configstream.spring.ConfigChangedEvent;
 import io.github.configstream.spring.ConfigService;
 import java.util.LinkedHashMap;

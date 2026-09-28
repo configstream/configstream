@@ -202,10 +202,24 @@ p { margin: 0; }
 .cs-instances > .cs-panel { margin-top: 12px; }
 .cs-instances-none { margin-top: 6px; font-size: 13px; }
 
-/* Orphaned properties: clean-up work, set apart from the properties in use */
-.cs-orphans { border-color: var(--warn); }
-.cs-orphans .cs-panel-head { background: var(--warn-soft); }
-.cs-orphans .cs-panel-head h2 { color: var(--warn); }
+/* Tabs in the Config panel: properties in use, and orphans (clean-up work) */
+.cs-tabs { display: flex; gap: 4px; margin-left: 8px; }
+.cs-tabs a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+.cs-tabs a:hover { background: var(--bg); text-decoration: none; }
+.cs-tabs a[aria-current] { background: var(--accent-soft); color: var(--accent); }
+.cs-tabs a.orphans { color: var(--warn); }
+.cs-tabs a.orphans[aria-current] { background: var(--warn-soft); color: var(--warn); }
+.cs-tab-count { padding: 0 7px; border-radius: 999px; background: var(--bg); font-size: 12px; }
+.cs-tabs a.orphans .cs-tab-count { background: var(--warn-soft); }
 .cs-orphans-lead { margin: 0; padding: 12px 20px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; }
 
 .cs-type {

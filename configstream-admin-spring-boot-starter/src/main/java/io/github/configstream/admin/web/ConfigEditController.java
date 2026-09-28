@@ -162,7 +162,8 @@ class ConfigEditController {
         redirect.addFlashAttribute("notice", entry
                 .map(e -> "Deleted '" + e.key() + "' (v" + e.version() + "). Its history is kept.")
                 .orElse("'" + form.key() + "' was already deleted; nothing changed."));
-        return "redirect:" + basePath + "/services/{serviceName}";
+        // Back to the orphans tab, to carry on cleaning up (it falls back to the properties in use once none are left)
+        return "redirect:" + basePath + "/services/{serviceName}?view=orphans";
     }
 
     private String editPage(ServiceSummary service, ChangeForm form, ConfigEntry current, Model model) {

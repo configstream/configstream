@@ -110,14 +110,20 @@ class ConfigStreamAdminServerTest {
         register("orders", "o-1", 8080);
         when(serviceClient.currentConfig("orders")).thenReturn(config());
 
+        // Properties in use: editable, never deletable, and no way to add one
         mvc.perform(get("/services/orders"))
                 .andExpect(content().string(allOf(
                         containsString("/services/orders/edit?key=limits.max"),
-                        containsString("/services/orders/edit?key=feature.old.flag"),
                         not(containsString("/services/orders/delete?key=limits.max")),
-                        containsString("/services/orders/delete?key=feature.old.flag"),
-                        containsString("Orphan"),
+                        not(containsString("/services/orders/edit?key=feature.old.flag")),
+                        containsString("href=\"/services/orders?view=orphans\""),
                         not(containsString("Add entry")))));
+        // Orphans are on their own tab, where they can be deleted
+        mvc.perform(get("/services/orders").param("view", "orphans"))
+                .andExpect(content().string(allOf(
+                        containsString("/services/orders/delete?key=feature.old.flag"),
+                        containsString("No running instance declares these"),
+                        not(containsString("/services/orders/edit?key=limits.max")))));
     }
 
     @Test
@@ -298,7 +304,7 @@ class ConfigStreamAdminServerTest {
 
         mvc.perform(post("/services/orders/delete").param("key", "feature.old.flag").param("changedBy", "bob")
                         .param("comment", ""))
-                .andExpect(redirectedUrl("/services/orders"))
+                .andExpect(redirectedUrl("/services/orders?view=orphans"))
                 .andExpect(flash().attribute("notice", containsString("Deleted 'feature.old.flag' (v4)")));
     }
 

@@ -34,15 +34,17 @@ class DashboardController {
     }
 
     @GetMapping("/services/{serviceName}")
-    String service(@PathVariable String serviceName, Model model) {
+    String service(@PathVariable String serviceName, @RequestParam(required = false) String view, Model model) {
         ServiceSummary service = findService(serviceName);
         model.addAttribute("service", service);
         try {
             List<PropertyRow> rows = PropertyRow.of(client.currentConfig(serviceName), service);
+            // Orphans are clean-up work, on their own tab next to the properties in use
+            List<PropertyRow> orphans = rows.stream().filter(PropertyRow::orphan).toList();
             model.addAttribute("config", rows);
-            // Orphans are clean-up work, listed apart from the properties in use
             model.addAttribute("properties", rows.stream().filter(row -> !row.orphan()).toList());
-            model.addAttribute("orphans", rows.stream().filter(PropertyRow::orphan).toList());
+            model.addAttribute("orphans", orphans);
+            model.addAttribute("showOrphans", "orphans".equals(view) && !orphans.isEmpty());
         } catch (ServiceCallException e) {
             model.addAttribute("configError", e.getMessage());
         }

@@ -15,7 +15,7 @@ public interface ConfigChangeListener {
      * Called once on startup, and again if the source has to resynchronise (e.g. it lost its
      * position in the change stream).
      */
-    void onSnapshot(Map<PropertyId, ConfigValue> entries);
+    void onSnapshot(Map<String, ConfigValue> entries);
 
     /** A single incremental change that happened after the most recent snapshot. */
     void onChange(ConfigChange change);

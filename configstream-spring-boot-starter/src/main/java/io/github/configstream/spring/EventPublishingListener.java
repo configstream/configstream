@@ -4,7 +4,6 @@ import io.github.configstream.api.ConfigCache;
 import io.github.configstream.api.ConfigChange;
 import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigValue;
-import io.github.configstream.api.PropertyId;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -30,32 +29,32 @@ class EventPublishingListener implements ConfigChangeListener {
     }
 
     @Override
-    public void onSnapshot(Map<PropertyId, ConfigValue> snapshot) {
-        Map<PropertyId, ConfigValue> before = cache.getAll();
+    public void onSnapshot(Map<String, ConfigValue> snapshot) {
+        Map<String, ConfigValue> before = cache.getAll();
         cache.onSnapshot(snapshot);
         if (!initialized) {
             initialized = true;
             return;
         }
-        Set<PropertyId> ids = new HashSet<>(before.keySet());
-        ids.addAll(snapshot.keySet());
-        for (PropertyId id : ids) {
-            publishIfChanged(id, before.get(id), snapshot.get(id));
+        Set<String> keys = new HashSet<>(before.keySet());
+        keys.addAll(snapshot.keySet());
+        for (String key : keys) {
+            publishIfChanged(key, before.get(key), snapshot.get(key));
         }
     }
 
     @Override
     public void onChange(ConfigChange change) {
-        ConfigValue before = cache.get(change.id()).orElse(null);
+        ConfigValue before = cache.get(change.key()).orElse(null);
         cache.onChange(change);
         // Duplicates are normal (e.g. an event replayed right after a snapshot), so compare values.
-        publishIfChanged(change.id(), before, change.value());
+        publishIfChanged(change.key(), before, change.value());
     }
 
-    private void publishIfChanged(PropertyId id, ConfigValue oldValue, ConfigValue newValue) {
+    private void publishIfChanged(String key, ConfigValue oldValue, ConfigValue newValue) {
         boolean same = oldValue == null ? newValue == null : oldValue.sameAs(newValue);
         if (!same) {
-            publisher.publishEvent(new ConfigChangedEvent(id.key(), id.type(),
+            publisher.publishEvent(new ConfigChangedEvent(key,
                     oldValue == null ? null : oldValue.value(), newValue == null ? null : newValue.value()));
         }
     }

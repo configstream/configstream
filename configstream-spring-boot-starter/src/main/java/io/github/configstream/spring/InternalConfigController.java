@@ -5,13 +5,13 @@ import io.github.configstream.api.ConfigHistory;
 import io.github.configstream.api.ConfigHistoryEntry;
 import io.github.configstream.api.ConfigUpdate;
 import io.github.configstream.api.ConfigWriter;
-import io.github.configstream.api.PropertyId;
 import io.github.configstream.api.PropertyNotFoundException;
 import io.github.configstream.api.PropertyType;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -28,9 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Lets the admin app change properties through this service, using this service's own database
  * credentials, so the admin app never holds credentials for every service's database.
  *
- * <p>A property is identified by its key and type, so every request names both. Changes only edit values: properties
- * are created only when a service declaring them starts, and a property this instance declares can't be deleted.
- * Rejected changes return 4xx with {@code {"error": "..."}}, a message meant for the person who made the change.
+ * <p>Changes only edit values: properties are created only when a service declaring them starts, their types never
+ * change, and a property this instance declares can't be deleted. Rejected changes return 4xx with {@code {"error": "..."}}, a
+ * message meant for the person who made the change.
  *
  * <p>Guarded by a shared secret for now; OIDC replaces it once the admin app exists.
  */
@@ -59,28 +59,23 @@ class InternalConfigController {
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
     }
 
-    /**
-     * Every stored property as this instance currently sees it, sorted by key and type:
-     * {@code [{"key": "limits.max", "type": "int", "value": "20"}]}. The same key can appear with several types while
-     * instances running different code share the store.
-     */
+    /** Every property as this instance currently sees it, sorted by key: {@code {"limits.max": {"type": "int", "value": "20"}}}. */
     @GetMapping
-    ResponseEntity<List<PropertyView>> current(
+    ResponseEntity<Map<String, PropertyView>> current(
             @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret) {
         if (!secretMatches(providedSecret)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.ok(config.values().entrySet().stream()
-                .map(e -> new PropertyView(e.getKey().key(), e.getKey().type().typeName(), e.getValue().text()))
-                .sorted(Comparator.comparing(PropertyView::key).thenComparing(PropertyView::type))
-                .toList());
+        Map<String, PropertyView> values = new TreeMap<>();
+        config.values().forEach((key, value) -> values.put(key, new PropertyView(value.type().typeName(), value.text())));
+        return ResponseEntity.ok(values);
     }
 
     /**
      * Sets an existing property's value and records it in the history. Returns 200 with the recorded
-     * {@link ConfigHistoryEntry}, 204 if the property already had this value, 404 if no property has this key and type,
-     * or 400 if the value doesn't fit the type. Caches, including this instance's, update shortly after through the
-     * change stream.
+     * {@link ConfigHistoryEntry}, 204 if the property already had this value, 404 if it doesn't exist, or 400 if the
+     * value doesn't fit the property's type or the request names a different type. Caches, including this
+     * instance's, update shortly after through the change stream.
      *
      * <p>To roll back, send the historical value again with a comment such as {@code "Reverted to v3"}.
      */
@@ -91,22 +86,21 @@ class InternalConfigController {
         if (!secretMatches(providedSecret)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (request == null || isBlank(request.key()) || isBlank(request.type()) || request.value() == null
-                || isBlank(request.changedBy())) {
-            return error(HttpStatus.BAD_REQUEST, "key, type, value and changedBy are required.");
+        if (request == null || isBlank(request.key()) || request.value() == null || isBlank(request.changedBy())) {
+            return error(HttpStatus.BAD_REQUEST, "key, value and changedBy are required.");
         }
         try {
-            PropertyId id = PropertyId.of(request.key(), PropertyType.fromName(request.type()));
-            return writer.write(new ConfigUpdate(id, request.value(), request.changedBy(), request.comment()))
+            PropertyType type = request.type() == null ? null : PropertyType.fromName(request.type());
+            return writer.write(new ConfigUpdate(request.key(), request.value(), type, request.changedBy(), request.comment()))
                     .<ResponseEntity<?>>map(entry -> {
-                        log.info("Property {} updated to v{} by {} via internal endpoint",
-                                entry.id(), entry.version(), entry.changedBy());
+                        log.info("Property '{}' updated to v{} by {} via internal endpoint",
+                                entry.key(), entry.version(), entry.changedBy());
                         return ResponseEntity.ok(entry);
                     })
                     .orElseGet(() -> ResponseEntity.noContent().build());
         } catch (PropertyNotFoundException e) {
             return error(HttpStatus.NOT_FOUND, e.getMessage());
-        } catch (IllegalArgumentException e) { // includes InvalidConfigValueException, an invalid key or type name
+        } catch (IllegalArgumentException e) { // includes InvalidConfigValueException and an unknown type name
             return error(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
@@ -114,7 +108,7 @@ class InternalConfigController {
     /**
      * Deletes a property this instance doesn't declare (an orphan): it leaves the store and every cache, and its
      * history is kept. Returns 200 with the recorded {@link ConfigHistoryEntry}, 204 if it doesn't exist, or 409 if
-     * one of this instance's {@link LiveConfig} classes declares it. The same key with another type can be deleted.
+     * one of this instance's {@link LiveConfig} classes declares it.
      */
     @PostMapping("/delete")
     ResponseEntity<?> delete(
@@ -123,23 +117,17 @@ class InternalConfigController {
         if (!secretMatches(providedSecret)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (request == null || isBlank(request.key()) || isBlank(request.type()) || isBlank(request.changedBy())) {
-            return error(HttpStatus.BAD_REQUEST, "key, type and changedBy are required.");
+        if (request == null || isBlank(request.key()) || isBlank(request.changedBy())) {
+            return error(HttpStatus.BAD_REQUEST, "key and changedBy are required.");
         }
-        PropertyId id;
-        try {
-            id = PropertyId.of(request.key(), PropertyType.fromName(request.type()));
-        } catch (IllegalArgumentException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
+        if (registry.declares(request.key())) {
+            return error(HttpStatus.CONFLICT, "'" + request.key() + "' is declared by this service, so it is in use and "
+                    + "can't be deleted. Remove it from the service's @LiveConfig class first.");
         }
-        if (registry.declares(id)) {
-            return error(HttpStatus.CONFLICT, "'" + id.key() + "' (" + id.type().typeName() + ") is declared by this "
-                    + "service, so it is in use and can't be deleted. Remove it from the service's @LiveConfig class first.");
-        }
-        return writer.delete(new ConfigDeletion(id, request.changedBy(), request.comment()))
+        return writer.delete(new ConfigDeletion(request.key(), request.changedBy(), request.comment()))
                 .<ResponseEntity<?>>map(entry -> {
-                    log.info("Property {} deleted (v{}) by {} via internal endpoint",
-                            entry.id(), entry.version(), entry.changedBy());
+                    log.info("Property '{}' deleted (v{}) by {} via internal endpoint",
+                            entry.key(), entry.version(), entry.changedBy());
                     return ResponseEntity.ok(entry);
                 })
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -150,22 +138,15 @@ class InternalConfigController {
     ResponseEntity<List<ConfigHistoryEntry>> history(
             @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
             @RequestParam(required = false) String key,
-            @RequestParam(required = false) String type,
             @RequestParam(required = false) Integer limit) {
         if (!secretMatches(providedSecret)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (isBlank(key) || isBlank(type) || (limit != null && limit <= 0)) {
-            return ResponseEntity.badRequest().build();
-        }
-        PropertyId id;
-        try {
-            id = PropertyId.of(key, PropertyType.fromName(type));
-        } catch (IllegalArgumentException e) {
+        if (isBlank(key) || (limit != null && limit <= 0)) {
             return ResponseEntity.badRequest().build();
         }
         int effectiveLimit = limit == null ? DEFAULT_HISTORY_LIMIT : Math.min(limit, MAX_HISTORY_LIMIT);
-        return ResponseEntity.ok(history.history(id, effectiveLimit));
+        return ResponseEntity.ok(history.history(key, effectiveLimit));
     }
 
     private boolean secretMatches(String provided) {
@@ -181,15 +162,18 @@ class InternalConfigController {
         return s == null || s.isBlank();
     }
 
-    /** {@code changedBy} is the admin app's authenticated user; {@code type} is e.g. {@code "int"}; {@code comment} is optional. */
-    record UpdateRequest(String key, String type, String value, String changedBy, String comment) {
+    /**
+     * {@code changedBy} is the admin app's authenticated user; {@code type} (e.g. {@code "int"}) and {@code comment}
+     * are optional. A {@code type} different from the property's is rejected: types come only from the service's code.
+     */
+    record UpdateRequest(String key, String value, String type, String changedBy, String comment) {
     }
 
-    record DeleteRequest(String key, String type, String changedBy, String comment) {
+    record DeleteRequest(String key, String changedBy, String comment) {
     }
 
-    /** A property's key, type and value as text. */
-    record PropertyView(String key, String type, String value) {
+    /** A property's type and its value as text. */
+    record PropertyView(String type, String value) {
     }
 
     record ErrorResponse(String error) {

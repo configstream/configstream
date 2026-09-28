@@ -85,10 +85,8 @@ class FundsPage {
 - **The stored value always wins.** After a property exists, its value is changed in the admin server; changing
   `application.yml` no longer affects it. The starting value is used again only while the property is missing from
   MongoDB or its stored value doesn't fit its type.
-- **A property is its key and its type.** Changing a field's type creates a new property with the same key and the new
-  type, starting from the new version's value; the old one is left alone for the instances still running the old
-  version (a blue-green deployment, for example). The admin server shows both, each "used by 1 of 2 instances", and the
-  old one moves to the Orphaned tab once no running instance declares it, ready to be deleted.
+- **Types never change.** Starting a version whose field has a different type than the stored property fails with an
+  explanation. To change a type, rename the field, which gives the property a new key.
 - **Only `@LiveConfig` classes are stored**, so connection details and other ordinary configuration never reach MongoDB.
   The class can't be final or a record (its getters are served from the live values), and every field needs a value.
 - **Descriptions** shown in the admin server come from the fields' Javadoc, if the build runs Spring Boot's
@@ -99,13 +97,10 @@ Listen for changes with `@EventListener`:
 ```java
 @EventListener
 void onChange(ConfigChangedEvent e) {
-    // e.key(), e.type(), e.oldValue(), e.newValue(); fired within ~1s of the change; the getters already return the new value
+    // e.key(), e.oldValue(), e.newValue(); fired within ~1s of the change; the getters already return the new value
 }
 ```
-Stored as one document per property, identified by key and type:
-`{ "_id": { "key": "feature.funds.limit", "type": "int" }, "value": 3, "version": 1 }`. Documents written by earlier
-versions (`{ "_id": "feature.funds.limit", "type": "int", ... }`) are still read, and are moved to this shape, with
-their history, the first time a service declaring them starts.
+Stored as one document per property: `{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }`.
 configstream uses its own connection and does not replace your application's `MongoClient` bean.
 
 ### Connecting to the admin server (optional)

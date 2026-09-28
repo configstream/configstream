@@ -71,12 +71,11 @@ class DashboardController {
     }
 
     @GetMapping("/services/{serviceName}/history")
-    String history(@PathVariable String serviceName, @RequestParam String key, @RequestParam String type, Model model) {
+    String history(@PathVariable String serviceName, @RequestParam String key, Model model) {
         model.addAttribute("service", findService(serviceName));
         model.addAttribute("key", key);
-        model.addAttribute("type", type);
         try {
-            model.addAttribute("entries", client.history(serviceName, key, type, HISTORY_LIMIT));
+            model.addAttribute("entries", client.history(serviceName, key, HISTORY_LIMIT));
         } catch (ServiceCallException e) {
             model.addAttribute("historyError", e.getMessage());
         }

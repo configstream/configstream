@@ -9,7 +9,7 @@ import java.util.Map;
 public interface ConfigChangeSource extends AutoCloseable {
 
     /** Reads every property from the store. Entries whose value doesn't fit their type are left out. Does not require {@link #start}. */
-    Map<PropertyId, ConfigValue> loadInitial();
+    Map<String, ConfigValue> loadInitial();
 
     /**
      * Starts watching the store. Implementations must:

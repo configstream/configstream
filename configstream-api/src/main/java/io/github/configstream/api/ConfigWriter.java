@@ -10,13 +10,13 @@ import java.util.Optional;
 public interface ConfigWriter {
 
     /**
-     * Creates the property with its initial value, unless it already exists, in which case nothing is written: an
-     * existing value is never replaced. The same key with another type is a different property and is left alone.
-     * Safe to call from many instances at once.
+     * Creates the property with its initial value, unless the key already exists, in which case nothing is written:
+     * an existing value is never replaced. Safe to call from many instances at once.
      *
-     * @return whether this call created the property
+     * @return the type stored under the key: {@code initial}'s type if it was just created, otherwise the existing
+     *     property's type, which the caller must compare (a property's type never changes)
      */
-    boolean createIfAbsent(PropertyId id, ConfigValue initial, String changedBy, String comment);
+    PropertyType createIfAbsent(String key, ConfigValue initial, String changedBy, String comment);
 
     /**
      * Replaces an existing property's value. The new value and its history entry are stored together or not at all.
@@ -24,7 +24,8 @@ public interface ConfigWriter {
      * @return the recorded history entry, or empty if the property already had this value (nothing is written and
      *     no version is used up)
      * @throws PropertyNotFoundException if the property doesn't exist: updates never create properties
-     * @throws InvalidConfigValueException if the value isn't valid for the property's type
+     * @throws InvalidConfigValueException if the value isn't valid for the property's type, or the update names a
+     *     different type
      */
     Optional<ConfigHistoryEntry> write(ConfigUpdate update);
 

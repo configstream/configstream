@@ -7,9 +7,10 @@ import io.github.configstream.admin.registry.ServiceSummary;
 import io.github.configstream.api.ConfigHistoryEntry;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,49 +47,43 @@ public class ServiceClient {
         this.properties = properties;
     }
 
-    /**
-     * Every property, as one active instance sees them, sorted by key and type. The same key can appear with several
-     * types while instances running different code share the store.
-     */
-    public List<ConfigEntry> currentConfig(String serviceName) {
-        List<ConfigEntry> properties = call(serviceName, (baseUrl, secret) -> http.get()
+    /** Every property with its type, as one active instance sees them, sorted by key. */
+    public Map<String, ConfigEntry> currentConfig(String serviceName) {
+        Map<String, ConfigEntry> properties = call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config")
                 .header(SECRET_HEADER, secret)
                 .retrieve()
-                .body(new ParameterizedTypeReference<List<ConfigEntry>>() {}));
-        return properties == null ? List.of() : properties.stream()
-                .sorted(Comparator.comparing(ConfigEntry::key).thenComparing(ConfigEntry::type))
-                .toList();
+                .body(new ParameterizedTypeReference<Map<String, ConfigEntry>>() {}));
+        return new TreeMap<>(properties);
     }
 
-    /** Changes to the property with this key and type, newest first. */
-    public List<ConfigHistoryEntry> history(String serviceName, String key, String type, int limit) {
+    /** Changes to {@code key}, newest first. */
+    public List<ConfigHistoryEntry> history(String serviceName, String key, int limit) {
         return call(serviceName, (baseUrl, secret) -> http.get()
-                .uri(baseUrl + "/internal/config/history?key={key}&type={type}&limit={limit}", key, type, limit)
+                .uri(baseUrl + "/internal/config/history?key={key}&limit={limit}", key, limit)
                 .header(SECRET_HEADER, secret)
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<ConfigHistoryEntry>>() {}));
     }
 
     /**
-     * Sets the existing property with this key and type to {@code value} through the service, recording who changed it
-     * and why.
+     * Sets the existing property {@code key} to {@code value} through the service, recording who changed it and why.
+     * {@code type} is the type the admin believes the property has; the service rejects the change if it differs.
      *
-     * @return the recorded history entry, or empty if the property already had this value
+     * @return the recorded history entry, or empty if the key already had this value
      */
-    public Optional<ConfigHistoryEntry> update(String serviceName, String key, String type, String value,
+    public Optional<ConfigHistoryEntry> update(String serviceName, String key, String value, String type,
             String changedBy, String comment) {
-        return write(serviceName, "/internal/config/update", new UpdateRequest(key, type, value, changedBy, comment));
+        return write(serviceName, "/internal/config/update", new UpdateRequest(key, value, type, changedBy, comment));
     }
 
     /**
-     * Deletes the property with this key and type through the service; the service refuses properties it declares.
+     * Deletes {@code key} through the service; the service refuses keys it declares.
      *
-     * @return the recorded history entry, or empty if the property doesn't exist
+     * @return the recorded history entry, or empty if the key doesn't exist
      */
-    public Optional<ConfigHistoryEntry> delete(String serviceName, String key, String type, String changedBy,
-            String comment) {
-        return write(serviceName, "/internal/config/delete", new DeleteRequest(key, type, changedBy, comment));
+    public Optional<ConfigHistoryEntry> delete(String serviceName, String key, String changedBy, String comment) {
+        return write(serviceName, "/internal/config/delete", new DeleteRequest(key, changedBy, comment));
     }
 
     private Optional<ConfigHistoryEntry> write(String serviceName, String path, Object body) {
@@ -174,12 +169,11 @@ public class ServiceClient {
         }
     }
 
-    private record UpdateRequest(String key, String type, String value, String changedBy, String comment) {
+    private record UpdateRequest(String key, String value, String type, String changedBy, String comment) {
     }
-
-    private record DeleteRequest(String key, String type, String changedBy, String comment) {
-    }
-
     private record ErrorResponse(String error) {
+    }
+
+    private record DeleteRequest(String key, String changedBy, String comment) {
     }
 }

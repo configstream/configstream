@@ -5,8 +5,8 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * The type of a property, declared by the application. With the key it identifies the property (see
- * {@link PropertyId}), so declaring another type for the same key creates a new property.
+ * The type of a property, declared by the application. A property's type never changes: to change it, declare
+ * the property under a new key.
  *
  * <p>Values are held as {@link Boolean}, {@link Integer}, {@link BigDecimal} or {@link String}.
  */

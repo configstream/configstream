@@ -22,8 +22,7 @@ import java.lang.annotation.Target;
  *
  * <p>On startup each property missing from the store is created with the value Spring has bound (the field's default,
  * or {@code application.yml}, {@code application-prod.yml} and so on); after that the stored value always wins, and it
- * is changed in the admin app. A property is identified by its key and type: changing a field's type creates a new
- * property, and the old one stays for instances still running the old code until it becomes an orphan.
+ * is changed in the admin app. A property's type never changes: to change it, rename the field.
  *
  * <p>Supported field types: {@code boolean}, {@code int} (and their wrappers), {@link java.math.BigDecimal} and
  * {@link String}. The class must not be final or a record, because its getters are served from the live values.

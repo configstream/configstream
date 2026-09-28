@@ -3,7 +3,6 @@ package io.github.configstream.spring;
 import io.github.configstream.api.ConfigCache;
 import io.github.configstream.api.ConfigChangeSource;
 import io.github.configstream.api.ConfigValue;
-import io.github.configstream.api.PropertyId;
 import java.util.Map;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
@@ -34,21 +33,18 @@ public class ConfigService implements SmartInitializingSingleton {
         source.start(listener);
     }
 
-    /**
-     * Every stored property as this instance currently sees it, including those of the service's other versions: the
-     * same key can be stored with several types while instances with different code run side by side.
-     */
-    public Map<PropertyId, ConfigValue> values() {
+    /** Every property as this instance currently sees it. */
+    public Map<String, ConfigValue> values() {
         return cache.getAll();
     }
 
     /** The property's current value, or {@code null} if it is missing or its stored value doesn't fit its type. */
-    public ConfigValue value(PropertyId id) {
-        return cache.get(id).orElse(null);
+    public ConfigValue value(String key) {
+        return cache.get(key).orElse(null);
     }
 
     /** Records a property just created in the store, unless the cache already has a value for it. */
-    void seedIfAbsent(PropertyId id, ConfigValue value) {
-        cache.putIfAbsent(id, value);
+    void seedIfAbsent(String key, ConfigValue value) {
+        cache.putIfAbsent(key, value);
     }
 }

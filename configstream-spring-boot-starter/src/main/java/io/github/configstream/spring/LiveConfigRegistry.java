@@ -3,7 +3,7 @@ package io.github.configstream.spring;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.ConfigWriter;
 import io.github.configstream.api.PropertyDeclaration;
-import io.github.configstream.api.PropertyId;
+import io.github.configstream.api.PropertyType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -18,8 +18,8 @@ import org.springframework.context.event.EventListener;
 
 /**
  * The application's live properties, collected from its {@link LiveConfig} classes. For each class it creates the
- * properties missing from the store (with the value Spring bound), serves the class's getters from the live values,
- * and passes every change on to its setters.
+ * properties missing from the store (with the value Spring bound), rejects a type that differs from the stored one,
+ * serves the class's getters from the live values, and passes every change on to its setters.
  */
 public class LiveConfigRegistry {
 
@@ -50,47 +50,48 @@ public class LiveConfigRegistry {
         return List.copyOf(declarations.values());
     }
 
-    /** Whether this application declares the property: its key, with that type. */
-    public boolean declares(PropertyId id) {
-        PropertyDeclaration declaration = declarations.get(id.key());
-        return declaration != null && declaration.type() == id.type();
+    public boolean declares(String key) {
+        return declarations.containsKey(key);
     }
 
     /**
      * Makes {@code bean}, a bound {@link LiveConfig} class, live and returns what the application should use in its
      * place: a proxy whose getters return the live values.
      *
-     * <p>A property is identified by its key and type, so a field whose type changed gets a new property. The old one
-     * stays for instances still running the old code.
-     *
-     * @throws IllegalStateException if the class can't be live, or it declares a key another live class declares with
-     *     another type
+     * @throws IllegalStateException if the class can't be live, or a property's type differs from the stored one
      */
     Object register(Object bean, Class<?> type) {
         LiveConfigClass liveClass = LiveConfigClass.of(type, bean, descriptions);
-        List<String> conflicts = new ArrayList<>();
+        List<String> typeChanges = new ArrayList<>();
         Map<Method, String> getters = new ConcurrentHashMap<>();
         for (LiveConfigClass.LiveProperty property : liveClass.properties()) {
             PropertyDeclaration declaration = property.declaration();
             PropertyDeclaration other = declarations.putIfAbsent(property.key(), declaration);
             if (other != null && other.type() != declaration.type()) {
-                conflicts.add("'" + property.key() + "' is declared as " + other.type().typeName() + " and as "
+                typeChanges.add("'" + property.key() + "' is declared as " + other.type().typeName() + " and as "
                         + declaration.type().typeName() + " in " + type.getSimpleName());
                 continue;
             }
-            if (writer != null && writer.createIfAbsent(declaration.id(), declaration.initial(),
-                    serviceName + " (startup)", "Created from " + type.getSimpleName())) {
+            if (writer != null) {
+                PropertyType stored = writer.createIfAbsent(property.key(), declaration.initial(),
+                        serviceName + " (startup)", "Created from " + type.getSimpleName());
+                if (stored != declaration.type()) {
+                    typeChanges.add("'" + property.key() + "' is stored as " + stored.typeName() + " but declared as "
+                            + declaration.type().typeName() + " (" + type.getSimpleName() + "."
+                            + property.getter().getName() + ")");
+                    continue;
+                }
                 // A property just created is known right away, without waiting for the change stream to report it
-                config.seedIfAbsent(declaration.id(), declaration.initial());
+                config.seedIfAbsent(property.key(), declaration.initial());
             }
-            reportOtherTypes(declaration);
             bindings.computeIfAbsent(property.key(), k -> new ArrayList<>()).add(new Binding(bean, property));
             getters.put(property.getter(), property.key());
             apply(bean, property, current(property.key()));
         }
-        if (!conflicts.isEmpty()) {
-            throw new IllegalStateException("A key can have only one type within an application: "
-                    + String.join("; ", conflicts) + ".");
+        if (!typeChanges.isEmpty()) {
+            throw new IllegalStateException("A property's type can't change: " + String.join("; ", typeChanges)
+                    + ". To change a type, rename the field so the property gets a new key; the old key is shown as "
+                    + "orphaned once no running instance declares it.");
         }
         log.info("{} is live: {}", type.getSimpleName(),
                 liveClass.properties().stream().map(LiveConfigClass.LiveProperty::key).toList());
@@ -103,33 +104,19 @@ public class LiveConfigRegistry {
      */
     Object current(String key) {
         PropertyDeclaration declaration = declarations.get(key);
-        ConfigValue stored = config.value(declaration.id());
-        return stored != null ? stored.value() : declaration.initialValue();
-    }
-
-    /**
-     * Notes the key's properties of other types, which belong to other versions of the service (for example the old
-     * version during a blue-green deployment that changed the type). They are left alone.
-     */
-    private void reportOtherTypes(PropertyDeclaration declaration) {
-        List<String> others = config.values().keySet().stream()
-                .filter(id -> id.key().equals(declaration.key()) && id.type() != declaration.type())
-                .map(id -> id.type().typeName())
-                .sorted()
-                .toList();
-        if (!others.isEmpty()) {
-            log.info("'{}' is declared as {} here, and is also stored as {}. That property belongs to instances running "
-                    + "other code; it keeps its value and is shown as orphaned once none of them run.",
-                    declaration.key(), declaration.type().typeName(), String.join(" and ", others));
+        ConfigValue stored = config.value(key);
+        if (stored != null && stored.type() == declaration.type()) {
+            return stored.value();
         }
+        return declaration.initialValue();
     }
 
     /** Passes a change on to the setters of every bean declaring the property. */
     @EventListener
     void onConfigChanged(ConfigChangedEvent event) {
         List<Binding> bound = bindings.get(event.key());
-        if (bound == null || !declares(event.id())) {
-            return; // not ours, or the same key with the type another version of the service declares
+        if (bound == null) {
+            return;
         }
         Object value = current(event.key());
         for (Binding binding : bound) {

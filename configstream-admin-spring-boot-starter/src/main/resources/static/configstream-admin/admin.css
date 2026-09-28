@@ -189,8 +189,6 @@ p { margin: 0; }
 .cs-row.config { grid-template-columns: minmax(0, 1.2fr) 80px minmax(0, 1fr) 280px; }
 .cs-key-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .cs-description { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12.5px; }
-/* Shown while only some instances declare a property, e.g. old and new versions during a blue-green deployment */
-.cs-usage { flex-basis: 100%; color: var(--warn); font-size: 12px; cursor: help; }
 
 /* Instances: one line, details folded away */
 .cs-instances { margin-top: 6px; }

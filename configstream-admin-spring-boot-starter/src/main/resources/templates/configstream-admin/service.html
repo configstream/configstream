@@ -9,29 +9,39 @@
     </nav>
     <div th:replace="~{configstream-admin/layout :: notice}"></div>
 
-    <div class="cs-title" th:with="n=${service.activeCount()}">
-        <h1 th:text="${service.serviceName()}">orders</h1>
-        <span class="cs-chip" th:if="${service.team()}" th:text="${service.team()}">team-a</span>
-        <span class="cs-muted" th:text="${n == 1 ? '1 active instance' : n + ' active instances'}">2 active instances</span>
-    </div>
-
-    <section class="cs-panel" th:unless="${service.activeInstances().isEmpty()}">
-        <div class="cs-panel-head"><h2>Active instances</h2></div>
-        <div class="cs-row instances" th:each="i : ${service.activeInstances()}">
-            <code class="cs-muted" th:text="${i.instanceId()}">orders-1</code>
-            <span th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</span>
-            <span class="cs-muted" th:text="'Heartbeat ' + ${@configStreamAdminTime.ago(i.lastHeartbeat())}">Heartbeat 5s ago</span>
-            <span class="cs-muted" th:title="${@configStreamAdminTime.timestamp(i.registeredAt())}"
-                  th:text="'Registered ' + ${@configStreamAdminTime.ago(i.registeredAt())}">Registered 12m ago</span>
+    <div>
+        <div class="cs-title">
+            <h1 th:text="${service.serviceName()}">orders</h1>
+            <span class="cs-chip" th:if="${service.team()}" th:text="${service.team()}">team-a</span>
         </div>
-    </section>
+
+        <!--/* Instances matter only as where changes are sent, so they stay folded away */-->
+        <p class="cs-muted cs-instances-none" th:if="${service.activeInstances().isEmpty()}">No active instances</p>
+        <details class="cs-instances" th:unless="${service.activeInstances().isEmpty()}" th:with="n=${service.activeCount()}">
+            <summary>
+                <span class="cs-instances-count" th:text="${n == 1 ? '1 active instance' : n + ' active instances'}">2 active instances</span>
+                <span class="cs-muted" th:text="${#strings.listJoin(service.activeInstances().![address()], ', ')}">10.0.0.5:8081, 10.0.0.5:8082</span>
+                <span class="cs-instances-toggle"></span>
+            </summary>
+            <section class="cs-panel">
+                <div class="cs-panel-head"><h2>Active instances</h2></div>
+                <div class="cs-row instances" th:each="i : ${service.activeInstances()}">
+                    <code class="cs-muted" th:text="${i.instanceId()}">orders-1</code>
+                    <span th:text="${i.baseUrl() ?: 'no port reported'}">http://10.0.0.5:8080</span>
+                    <span class="cs-muted" th:text="'Heartbeat ' + ${@configStreamAdminTime.ago(i.lastHeartbeat())}">Heartbeat 5s ago</span>
+                    <span class="cs-muted" th:title="${@configStreamAdminTime.timestamp(i.registeredAt())}"
+                          th:text="'Registered ' + ${@configStreamAdminTime.ago(i.registeredAt())}">Registered 12m ago</span>
+                </div>
+            </section>
+        </details>
+    </div>
 
     <th:block th:if="${configError}"><div th:replace="~{configstream-admin/layout :: error(${configError})}"></div></th:block>
 
     <section class="cs-panel" th:if="${config}">
         <div class="cs-panel-head">
             <h2>Config</h2>
-            <span class="cs-muted" data-cs-count th:text="${config.size() == 1 ? '1 key' : config.size() + ' keys'}">4 keys</span>
+            <span class="cs-muted" data-cs-count th:text="${properties.size() == 1 ? '1 key' : properties.size() + ' keys'}">3 keys</span>
             <div class="cs-spacer"></div>
             <label class="cs-search" hidden th:unless="${config.isEmpty()}">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -39,36 +49,24 @@
                 <input type="search" placeholder="Filter keys" aria-label="Filter keys" data-cs-filter autocomplete="off">
             </label>
         </div>
-        <p class="cs-empty" th:if="${config.isEmpty()}">This service has no properties yet. They are added in its configstream.yml.</p>
-        <th:block th:unless="${config.isEmpty()}">
+        <p class="cs-empty" th:if="${properties.isEmpty()}">This service has no properties in use. They are added in its configstream.yml.</p>
+        <th:block th:unless="${properties.isEmpty()}">
             <div class="cs-row config head"><span>Key</span><span>Type</span><span>Value</span><span></span></div>
-            <div class="cs-row config" th:each="p : ${config}" th:attr="data-cs-key=${p.key()}">
-                <span class="cs-key-cell">
-                    <code class="cs-key" th:text="${p.key()}">feature.x.enabled</code>
-                    <span class="cs-tag orphan" th:if="${p.orphan()}"
-                          title="No active instance declares this property, so nothing reads it. It can be deleted.">Orphan</span>
-                    <span class="cs-description" th:if="${p.description()}" th:text="${p.description()}">Turns feature X on</span>
-                </span>
-                <span class="cs-type" th:text="${p.type()}">boolean</span>
-                <span>
-                    <span th:if="${p.isBoolean()}" th:class="${p.value() == 'true' ? 'cs-bool on' : 'cs-bool'}"
-                          th:text="${p.value()}">true</span>
-                    <span th:unless="${p.isBoolean()}" class="cs-value" th:text="${p.value()}">200</span>
-                </span>
-                <span class="cs-actions">
-                    <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${p.key()})}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Edit</a>
-                    <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${service.serviceName()}, key=${p.key()})}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>History</a>
-                    <a class="cs-act danger" th:if="${p.orphan()}"
-                       th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${service.serviceName()}, key=${p.key()})}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</a>
-                </span>
-            </div>
-            <p class="cs-empty" data-cs-nomatch hidden>No keys match the filter.</p>
+            <th:block th:each="p : ${properties}">
+                <div th:replace="~{configstream-admin/layout :: propertyRow(${p}, ${service.serviceName()})}"></div>
+            </th:block>
+        </th:block>
+        <p class="cs-empty" data-cs-nomatch hidden>No keys match the filter.</p>
+    </section>
+
+    <section class="cs-panel cs-orphans" th:if="${orphans != null and !orphans.isEmpty()}">
+        <div class="cs-panel-head">
+            <h2 th:text="'Orphaned properties (' + ${orphans.size()} + ')'">Orphaned properties (1)</h2>
+        </div>
+        <p class="cs-orphans-lead">No running instance declares these, so nothing reads them. Delete them once no version
+            you might roll back to still needs them.</p>
+        <th:block th:each="p : ${orphans}">
+            <div th:replace="~{configstream-admin/layout :: propertyRow(${p}, ${service.serviceName()})}"></div>
         </th:block>
     </section>
 
@@ -76,7 +74,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
         <span>Properties are added, renamed and retyped only in the service's configstream.yml. Here you change their
-            values. Only orphans, which no running instance declares, can be deleted.</span>
+            values.</span>
     </div>
 </main>
 </body>

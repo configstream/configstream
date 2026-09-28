@@ -40,6 +40,33 @@
     <span th:text="${message}">Could not reach any instance.</span>
 </div>
 
+<!--/* One property on the service page. Actions sit in fixed slots, so Edit and History line up whether or not
+     a row can be deleted */-->
+<div th:fragment="propertyRow(p, serviceName)" class="cs-row config" th:attr="data-cs-key=${p.key()}">
+    <span class="cs-key-cell">
+        <code class="cs-key" th:text="${p.key()}">feature.x.enabled</code>
+        <span class="cs-description" th:if="${p.description()}" th:text="${p.description()}">Turns feature X on</span>
+    </span>
+    <span class="cs-type" th:text="${p.type()}">boolean</span>
+    <span>
+        <span th:if="${p.isBoolean()}" th:class="${p.value() == 'true' ? 'cs-bool on' : 'cs-bool'}" th:text="${p.value()}">true</span>
+        <span th:unless="${p.isBoolean()}" class="cs-value" th:text="${p.value()}">200</span>
+    </span>
+    <span class="cs-actions">
+        <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${serviceName}, key=${p.key()})}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Edit</a>
+        <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${serviceName}, key=${p.key()})}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>History</a>
+        <a class="cs-act danger" th:if="${p.orphan()}"
+           th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${serviceName}, key=${p.key()})}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</a>
+        <span th:unless="${p.orphan()}" aria-hidden="true"></span>
+    </span>
+</div>
+
 <svg th:fragment="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
 </body>

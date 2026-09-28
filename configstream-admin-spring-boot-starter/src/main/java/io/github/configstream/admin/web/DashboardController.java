@@ -4,6 +4,7 @@ import io.github.configstream.admin.client.ServiceCallException;
 import io.github.configstream.admin.client.ServiceClient;
 import io.github.configstream.admin.registry.InstanceRegistry;
 import io.github.configstream.admin.registry.ServiceSummary;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -37,7 +38,11 @@ class DashboardController {
         ServiceSummary service = findService(serviceName);
         model.addAttribute("service", service);
         try {
-            model.addAttribute("config", PropertyRow.of(client.currentConfig(serviceName), service));
+            List<PropertyRow> rows = PropertyRow.of(client.currentConfig(serviceName), service);
+            model.addAttribute("config", rows);
+            // Orphans are clean-up work, listed apart from the properties in use
+            model.addAttribute("properties", rows.stream().filter(row -> !row.orphan()).toList());
+            model.addAttribute("orphans", rows.stream().filter(PropertyRow::orphan).toList());
         } catch (ServiceCallException e) {
             model.addAttribute("configError", e.getMessage());
         }

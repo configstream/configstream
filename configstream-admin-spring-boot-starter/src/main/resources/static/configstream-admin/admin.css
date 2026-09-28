@@ -190,6 +190,24 @@ p { margin: 0; }
 .cs-key-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .cs-description { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12.5px; }
 
+/* Instances: one line, details folded away */
+.cs-instances { margin-top: 6px; }
+.cs-instances summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; list-style: none; cursor: pointer; font-size: 13px; }
+.cs-instances summary::-webkit-details-marker { display: none; }
+.cs-instances-count { font-weight: 600; }
+.cs-instances-toggle { color: var(--accent); font-weight: 550; }
+.cs-instances-toggle::before { content: "Show details"; }
+.cs-instances[open] .cs-instances-toggle::before { content: "Hide details"; }
+.cs-instances summary:hover .cs-instances-toggle { text-decoration: underline; }
+.cs-instances > .cs-panel { margin-top: 12px; }
+.cs-instances-none { margin-top: 6px; font-size: 13px; }
+
+/* Orphaned properties: clean-up work, set apart from the properties in use */
+.cs-orphans { border-color: var(--warn); }
+.cs-orphans .cs-panel-head { background: var(--warn-soft); }
+.cs-orphans .cs-panel-head h2 { color: var(--warn); }
+.cs-orphans-lead { margin: 0; padding: 12px 20px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+
 .cs-type {
     justify-self: start;
     padding: 1px 8px;
@@ -264,7 +282,8 @@ p { margin: 0; }
 .cs-bool::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .cs-bool.on { background: var(--accent-soft); color: var(--accent); }
 
-.cs-actions { display: flex; justify-content: flex-end; gap: 2px; }
+/* Fixed slots (Edit, History, Delete) so the links line up on every row, including rows that can't be deleted */
+.cs-actions { display: grid; grid-template-columns: 72px 90px 84px; justify-content: end; justify-items: start; }
 
 .cs-act {
     display: inline-flex;

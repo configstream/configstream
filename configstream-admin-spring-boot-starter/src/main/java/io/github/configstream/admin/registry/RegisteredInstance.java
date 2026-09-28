@@ -15,6 +15,11 @@ public record RegisteredInstance(
         return registration.instanceId();
     }
 
+    /** {@code host:port} for display, or just the host if the instance didn't report a port. */
+    public String address() {
+        return registration.port() == null ? registration.host() : registration.host() + ":" + registration.port();
+    }
+
     /** {@code http://host:port}, or {@code null} if the instance didn't report a port. */
     public String baseUrl() {
         return registration.port() == null ? null : "http://" + registration.host() + ":" + registration.port();

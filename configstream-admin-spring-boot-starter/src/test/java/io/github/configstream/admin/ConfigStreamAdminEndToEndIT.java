@@ -137,8 +137,8 @@ class ConfigStreamAdminEndToEndIT {
                     .append("type", "boolean").append("value", true).append("version", 1L));
             await().atMost(PROPAGATION).untilAsserted(() -> assertThat(currentConfigOf(instanceUrls.get(0))).contains("feature.old.flag"));
             // The instances registered what their manifest declares, so the admin knows it is an orphan
-            assertThat(getHtml(adminUrl + "/services/payments"))
-                    .contains("Orphan", "<span class=\"cs-type\">int</span>", "/services/payments/delete?key=feature.old.flag")
+            assertThat(getHtml(adminUrl + "/services/payments?view=orphans"))
+                    .contains("Orphaned", "<span class=\"cs-type\">boolean</span>", "/services/payments/delete?key=feature.old.flag")
                     .doesNotContain("/services/payments/delete?key=limits.max", "Add entry");
             HttpResponse<String> deleted = postForm("/services/payments/delete", Map.of(
                     "key", "feature.old.flag", "changedBy", "dave", "comment", "retired"));

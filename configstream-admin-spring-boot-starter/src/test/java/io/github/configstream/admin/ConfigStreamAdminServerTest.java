@@ -87,6 +87,32 @@ class ConfigStreamAdminServerTest {
     }
 
     @Test
+    void dashboardSearchesServicesByNameOrTeam() throws Exception {
+        register("orders", "o-1", 8080);
+        register("billing", "b-1", 8081);
+
+        // Every card is sent; the ones that don't match are hidden, so typing can widen the search again
+        mvc.perform(get("/").param("q", " BILL "))
+                .andExpect(content().string(allOf(
+                        containsString("href=\"/services/billing\" data-cs-search=\"billing team-a\">"),
+                        containsString("href=\"/services/orders\" data-cs-search=\"orders team-a\" hidden=\"hidden\">"),
+                        containsString("value=\"BILL\""),
+                        containsString("1 of 2 services"))));
+        mvc.perform(get("/").param("q", "team-a"))
+                .andExpect(content().string(allOf(
+                        containsString("2 of 2 services"),
+                        not(containsString("team-a\" hidden=\"hidden\">")))));
+        mvc.perform(get("/").param("q", "nothing-like-this"))
+                .andExpect(content().string(allOf(
+                        containsString("0 of 2 services"),
+                        containsString("No services match &#39;nothing-like-this&#39;."))));
+        mvc.perform(get("/"))
+                .andExpect(content().string(allOf(
+                        containsString("2 services"),
+                        containsString("data-cs-service-nomatch hidden=\"hidden\""))));
+    }
+
+    @Test
     void servicePageShowsInstancesAndTypedProperties() throws Exception {
         register("orders", "o-1", 8080);
         when(serviceClient.currentConfig("orders")).thenReturn(config());
@@ -110,14 +136,20 @@ class ConfigStreamAdminServerTest {
         register("orders", "o-1", 8080);
         when(serviceClient.currentConfig("orders")).thenReturn(config());
 
+        // Properties in use: editable, never deletable, and no way to add one
         mvc.perform(get("/services/orders"))
                 .andExpect(content().string(allOf(
                         containsString("/services/orders/edit?key=limits.max"),
-                        containsString("/services/orders/edit?key=feature.old.flag"),
                         not(containsString("/services/orders/delete?key=limits.max")),
-                        containsString("/services/orders/delete?key=feature.old.flag"),
-                        containsString("Orphan"),
+                        not(containsString("/services/orders/edit?key=feature.old.flag")),
+                        containsString("href=\"/services/orders?view=orphans\""),
                         not(containsString("Add entry")))));
+        // Orphans are on their own tab, where they can be deleted
+        mvc.perform(get("/services/orders").param("view", "orphans"))
+                .andExpect(content().string(allOf(
+                        containsString("/services/orders/delete?key=feature.old.flag"),
+                        containsString("No running instance declares these"),
+                        not(containsString("/services/orders/edit?key=limits.max")))));
     }
 
     @Test
@@ -180,7 +212,7 @@ class ConfigStreamAdminServerTest {
                 .andExpect(content().string(allOf(
                         containsString("Edit property"),
                         containsString("name=\"key\" value=\"limits.max\""),
-                        containsString("type=\"number\" step=\"1\" name=\"value\" value=\"50\""),
+                        containsString("type=\"text\" inputmode=\"numeric\" name=\"value\" value=\"50\""),
                         containsString("Maximum items per order"))));
         mvc.perform(get("/services/orders/edit").param("key", "feature.x.enabled"))
                 .andExpect(content().string(allOf(
@@ -246,6 +278,39 @@ class ConfigStreamAdminServerTest {
     }
 
     @Test
+    void anInvalidValueKeepsWhatWasTypedAndHighlightsTheField() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(config());
+
+        // Letters in an int field: shown back as typed, with the reason on the field
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "limits.max").param("value", "abc").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("name=\"value\" value=\"abc\""),
+                        containsString("class=\"mono invalid\""),
+                        containsString("aria-invalid=\"true\" aria-describedby=\"value-error\""),
+                        containsString("<p class=\"cs-field-error\" id=\"value-error\">&#39;abc&#39; is not a valid int.</p>"),
+                        not(containsString("cs-banner error")))));
+        // Booleans: the true/false buttons are highlighted the same way, for a wrong value or none at all
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "feature.x.enabled").param("value", "yes").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("<fieldset class=\"cs-field cs-choice invalid\" aria-invalid=\"true\""),
+                        containsString("&#39;yes&#39; is not a valid boolean."))));
+        mvc.perform(post("/services/orders/edit/review")
+                        .param("key", "feature.x.enabled").param("changedBy", "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("<fieldset class=\"cs-field cs-choice invalid\" aria-invalid=\"true\""),
+                        containsString("<p class=\"cs-field-error\" id=\"value-error\">Value is required.</p>"),
+                        not(containsString("cs-banner error")))));
+        // The same check guards a direct update, before anything is sent to the service
+        mvc.perform(post("/services/orders/update")
+                        .param("key", "limits.max").param("value", "abc").param("type", "int").param("changedBy", "alice"))
+                .andExpect(content().string(containsString("aria-invalid=\"true\"")));
+        verify(serviceClient, never()).update(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void applyingAnUpdateSendsTheTypeAndRedirectsWithAConfirmation() throws Exception {
         register("orders", "o-1", 8080);
         when(serviceClient.currentConfig("orders")).thenReturn(config());
@@ -298,7 +363,7 @@ class ConfigStreamAdminServerTest {
 
         mvc.perform(post("/services/orders/delete").param("key", "feature.old.flag").param("changedBy", "bob")
                         .param("comment", ""))
-                .andExpect(redirectedUrl("/services/orders"))
+                .andExpect(redirectedUrl("/services/orders?view=orphans"))
                 .andExpect(flash().attribute("notice", containsString("Deleted 'feature.old.flag' (v4)")));
     }
 

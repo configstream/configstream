@@ -30,6 +30,12 @@
             <artifactId>spring-webmvc</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Optional: the health indicator only activates in apps that use Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-actuator</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Generates META-INF/spring-configuration-metadata.json so IDEs autocomplete configstream.* properties -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

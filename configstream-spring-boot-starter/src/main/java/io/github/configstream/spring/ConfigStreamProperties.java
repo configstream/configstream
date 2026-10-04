@@ -34,6 +34,8 @@ public class ConfigStreamProperties {
 
     private final Instance instance = new Instance();
 
+    private final Health health = new Health();
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -80,6 +82,28 @@ public class ConfigStreamProperties {
 
     public Instance getInstance() {
         return instance;
+    }
+
+    public Health getHealth() {
+        return health;
+    }
+
+    /** The {@code configstream} entry in Spring Boot's health endpoint (needs Spring Boot Actuator). */
+    public static class Health {
+
+        /**
+         * How long this instance may be cut off from config changes before it reports DOWN. Short interruptions, such
+         * as a database failover, recover by themselves and are reported UP while reconnecting.
+         */
+        private Duration downAfter = Duration.ofMinutes(2);
+
+        public Duration getDownAfter() {
+            return downAfter;
+        }
+
+        public void setDownAfter(Duration downAfter) {
+            this.downAfter = downAfter;
+        }
     }
 
     public static class Internal {
@@ -184,6 +208,21 @@ public class ConfigStreamProperties {
          * name followed by {@code _history}.
          */
         private String historyCollection;
+
+        /**
+         * How long to wait for an answer from MongoDB before treating the connection as dead and reconnecting. Without
+         * it, a connection dropped silently by a firewall can leave this instance missing changes for hours. Ignored
+         * if the URI sets {@code socketTimeoutMS}.
+         */
+        private Duration socketTimeout = Duration.ofSeconds(30);
+
+        public Duration getSocketTimeout() {
+            return socketTimeout;
+        }
+
+        public void setSocketTimeout(Duration socketTimeout) {
+            this.socketTimeout = socketTimeout;
+        }
 
         public String getUri() {
             return uri;

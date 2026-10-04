@@ -9,9 +9,11 @@ import com.mongodb.client.model.changestream.OperationType;
 import io.github.configstream.api.ConfigChange;
 import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigChangeSource;
+import io.github.configstream.api.ConfigSourceStatus;
 import io.github.configstream.api.ConfigValue;
 import io.github.configstream.api.InvalidConfigValueException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -39,6 +41,9 @@ import org.slf4j.LoggerFactory;
  * <p><b>Failures:</b> the driver retries one transient error by itself. Beyond that, this class
  * reconnects with exponential backoff and resumes from the last seen resume token. If the token
  * has aged out of the oplog, or the collection is dropped/renamed, it reloads a fresh snapshot.
+ * A dead connection is only noticed if the client has a socket timeout (the starter sets one by default). Anything
+ * that would end the watcher thread, such as an {@link Error}, restarts it with a full reload instead.
+ * {@link #status()} reports whether it is connected, for health checks.
  */
 public class MongoChangeStreamSource implements ConfigChangeSource {
 
@@ -59,6 +64,9 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
     private ConfigChangeListener listener;
     private MongoChangeStreamCursor<ChangeStreamDocument<Document>> cursor;
     private BsonDocument resumeToken;
+
+    // Written by the thread driving the stream, read by health checks
+    private volatile ConfigSourceStatus status;
 
     public MongoChangeStreamSource(MongoCollection<Document> collection) {
         this.collection = collection;
@@ -89,6 +97,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
             closeCursor();
             throw e;
         }
+        markConnected();
         running = true;
         worker = new Thread(this::run, "configstream-change-stream");
         worker.setDaemon(true);
@@ -112,7 +121,41 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         worker = null;
     }
 
+    @Override
+    public ConfigSourceStatus status() {
+        return status;
+    }
+
+    /**
+     * Keeps the watch loop alive. The loop already survives exceptions (network failures, MongoDB errors, a failing
+     * listener); this catches what it can't, such as an {@link Error} like {@link OutOfMemoryError}, which would
+     * otherwise end the thread and silently freeze this instance's config. Each restart reloads everything, in case
+     * changes were missed.
+     */
     private void run() {
+        Duration restartDelay = MIN_BACKOFF;
+        while (running) {
+            try {
+                watch();
+                return; // stopped
+            } catch (Throwable t) {
+                if (!running) {
+                    return;
+                }
+                markDisconnected(t);
+                log.error("Config watcher on {} stopped unexpectedly; restarting in {} ms",
+                        collection.getNamespace(), restartDelay.toMillis(), t);
+                closeCursor();
+                resumeToken = null;
+                if (!sleep(restartDelay)) {
+                    return;
+                }
+                restartDelay = min(restartDelay.multipliedBy(2), MAX_BACKOFF);
+            }
+        }
+    }
+
+    private void watch() {
         Duration backoff = MIN_BACKOFF;
         while (running) {
             try {
@@ -120,6 +163,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
                     reconnect();
                 }
                 ChangeStreamDocument<Document> event = cursor.tryNext();
+                markConnected();
                 if (event != null && event.getOperationType() == OperationType.INVALIDATE) {
                     // Collection dropped or renamed; this stream can't continue.
                     log.warn("Change stream on {} invalidated; reloading", collection.getNamespace());
@@ -140,6 +184,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
                 if (e instanceof MongoException me && me.getCode() == CHANGE_STREAM_HISTORY_LOST) {
                     resumeToken = null; // too far behind to resume; next reconnect reloads a snapshot
                 }
+                markDisconnected(e);
                 log.warn("Change stream on {} failed; reconnecting in {} ms",
                         collection.getNamespace(), backoff.toMillis(), e);
                 closeCursor();
@@ -184,11 +229,28 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
         if (change == null) {
             return;
         }
+        ConfigSourceStatus current = status;
+        status = new ConfigSourceStatus(current.connected(), current.since(), Instant.now(), current.lastError());
         try {
             listener.onChange(change);
         } catch (RuntimeException e) {
             log.error("Config listener failed on change to '{}'", change.key(), e);
         }
+    }
+
+    private void markConnected() {
+        ConfigSourceStatus current = status;
+        if (current == null || !current.connected()) {
+            status = new ConfigSourceStatus(true, Instant.now(), current == null ? null : current.lastChangeAt(), null);
+        }
+    }
+
+    private void markDisconnected(Throwable cause) {
+        ConfigSourceStatus current = status;
+        String error = cause.getClass().getSimpleName() + ": " + cause.getMessage();
+        // Keep the time it was first lost, so health checks can tell how long it has been down
+        Instant since = current == null || current.connected() ? Instant.now() : current.since();
+        status = new ConfigSourceStatus(false, since, current == null ? null : current.lastChangeAt(), error);
     }
 
     private static ConfigChange toChange(ChangeStreamDocument<Document> event) {

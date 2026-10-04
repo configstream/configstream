@@ -1,6 +1,9 @@
 package io.github.configstream.spring;
 
 import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
@@ -41,6 +44,7 @@ import org.springframework.core.io.ResourceLoader;
 public class ConfigStreamAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ConfigStreamAutoConfiguration.class);
+    private static final Duration MIN_SOCKET_TIMEOUT = Duration.ofSeconds(5);
 
     @Bean
     @ConditionalOnMissingBean
@@ -89,7 +93,26 @@ public class ConfigStreamAutoConfiguration {
                         "No config database: add it to configstream.mongo.uri (mongodb://host/mydb?...) "
                                 + "or set configstream.mongo.database.");
             }
-            return new ConfigStreamMongoClient(MongoClients.create(uri), database);
+            return new ConfigStreamMongoClient(MongoClients.create(clientSettings(uri, mongo.getSocketTimeout())), database);
+        }
+
+        /**
+         * The connection settings, with a socket timeout unless the URI sets its own {@code socketTimeoutMS}. The
+         * driver's default is no timeout, so a connection dropped silently by a firewall would leave the change stream
+         * waiting, possibly for hours, instead of failing and reconnecting. The stream hears from the server about
+         * every half second, so the timeout only fires on a dead connection.
+         */
+        static MongoClientSettings clientSettings(ConnectionString uri, Duration socketTimeout) {
+            MongoClientSettings.Builder settings = MongoClientSettings.builder().applyConnectionString(uri);
+            if (uri.getSocketTimeout() == null) {
+                if (socketTimeout.compareTo(MIN_SOCKET_TIMEOUT) < 0) {
+                    throw new IllegalStateException("configstream.mongo.socket-timeout must be at least "
+                            + MIN_SOCKET_TIMEOUT.toSeconds() + "s, since the change stream waits up to half a second "
+                            + "for each answer; it is " + socketTimeout.toMillis() + "ms.");
+                }
+                settings.applyToSocketSettings(s -> s.readTimeout(socketTimeout.toMillis(), TimeUnit.MILLISECONDS));
+            }
+            return settings.build();
         }
 
         @Bean

@@ -102,6 +102,26 @@ class ConfigStreamAutoConfigurationIT {
     }
 
     @Test
+    void collectionsAreNamedAfterTheServiceByDefault() {
+        String service = "svc_" + UUID.randomUUID().toString().substring(0, 8);
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class))
+                .withPropertyValues(
+                        "spring.application.name=" + service,
+                        "configstream.mongo.uri=" + TestMongo.uri(),
+                        "configstream.mongo.database=" + TestMongo.database(),
+                        "configstream.manifest=classpath:manifests/configstream.yml")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var database = client.getDatabase(TestMongo.database());
+                    assertThat(database.getCollection(service + "_config")
+                            .find(eq("_id", "feature.funds.limit")).first()).isNotNull();
+                    assertThat(database.getCollection(service + "_config_history")
+                            .countDocuments(eq("key", "feature.funds.limit"))).isEqualTo(1);
+                });
+    }
+
+    @Test
     void aTypeChangeStopsStartup() {
         collection.insertOne(new Document("_id", "feature.funds.limit").append("type", "string").append("value", "3"));
 
@@ -163,7 +183,7 @@ class ConfigStreamAutoConfigurationIT {
         return new String[] {
                 "configstream.mongo.uri=" + TestMongo.uri(),
                 "configstream.mongo.database=" + TestMongo.database(),
-                "configstream.mongo.collection=" + collectionName,
+                "configstream.mongo.config-collection=" + collectionName,
                 "configstream.manifest=classpath:manifests/configstream.yml"};
     }
 

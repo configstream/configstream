@@ -36,14 +36,22 @@ MongoDB change streams push it to every instance.
 ## Usage (Spring Boot)
 
 Add `configstream-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set. Each service
-uses its own collection.
+uses its own collections, named after the service, so several services can safely share one database.
 
 ```yaml
+spring:
+  application:
+    name: orders              # collections: orders_config and orders_config_history
+
 configstream:
   mongo:
     uri: mongodb://localhost:27017/mydb?replicaSet=rs0
-    collection: config        # optional, defaults to "config"
+    # config-collection: orders_settings     # optional, defaults to <spring.application.name>_config
+    # history-collection: orders_audit       # optional, defaults to <config-collection>_history
 ```
+
+Both collections are created automatically on the first start; the service's database user needs read and write
+access (MongoDB's `readWrite` role).
 
 ### Declare properties in `configstream.yml`
 

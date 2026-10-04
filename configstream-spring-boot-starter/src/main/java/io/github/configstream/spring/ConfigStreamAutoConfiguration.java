@@ -92,37 +92,66 @@ public class ConfigStreamAutoConfiguration {
             return new ConfigStreamMongoClient(MongoClients.create(uri), database);
         }
 
+        @Bean
+        ConfigStreamCollections configStreamCollections(ConfigStreamMongoClient client, ConfigStreamProperties properties,
+                Environment environment) {
+            ConfigStreamCollections collections = ConfigStreamCollections.resolve(properties.getMongo(),
+                    environment.getProperty("spring.application.name"));
+            log.info("configstream uses collections '{}' and '{}' in database '{}'", collections.config(),
+                    collections.history(), client.database());
+            return collections;
+        }
+
         @Bean(destroyMethod = "stop")
-        ConfigChangeSource configStreamChangeSource(ConfigStreamMongoClient client, ConfigStreamProperties properties) {
-            return new MongoChangeStreamSource(configCollection(client, properties));
+        ConfigChangeSource configStreamChangeSource(ConfigStreamMongoClient client, ConfigStreamCollections collections) {
+            return new MongoChangeStreamSource(collection(client, collections.config()));
         }
 
         @Bean
         @ConditionalOnMissingBean(ConfigHistory.class)
-        MongoConfigHistory configStreamHistory(ConfigStreamMongoClient client, ConfigStreamProperties properties) {
-            ConfigStreamProperties.Mongo mongo = properties.getMongo();
-            String name = mongo.getHistoryCollection() != null
-                    ? mongo.getHistoryCollection()
-                    : mongo.getCollection() + "_history";
-            MongoConfigHistory history = new MongoConfigHistory(collection(client, name));
+        MongoConfigHistory configStreamHistory(ConfigStreamMongoClient client, ConfigStreamCollections collections) {
+            MongoConfigHistory history = new MongoConfigHistory(collection(client, collections.history()));
             history.ensureIndexes();
             return history;
         }
 
         @Bean
         @ConditionalOnMissingBean
-        ConfigWriter configStreamWriter(ConfigStreamMongoClient client, ConfigStreamProperties properties,
+        ConfigWriter configStreamWriter(ConfigStreamMongoClient client, ConfigStreamCollections collections,
                 MongoConfigHistory history) {
-            return new MongoConfigWriter(client.client(), configCollection(client, properties), history);
-        }
-
-        private static MongoCollection<Document> configCollection(
-                ConfigStreamMongoClient client, ConfigStreamProperties properties) {
-            return collection(client, properties.getMongo().getCollection());
+            return new MongoConfigWriter(client.client(), collection(client, collections.config()), history);
         }
 
         private static MongoCollection<Document> collection(ConfigStreamMongoClient client, String name) {
             return client.client().getDatabase(client.database()).getCollection(name);
+        }
+    }
+
+    /**
+     * The names of a service's two collections. By default they come from the service's name, so services sharing a
+     * database never share a collection: {@code orders} uses {@code orders_config} and {@code orders_config_history}.
+     */
+    record ConfigStreamCollections(String config, String history) {
+
+        static ConfigStreamCollections resolve(ConfigStreamProperties.Mongo mongo, String applicationName) {
+            String config = mongo.getConfigCollection();
+            if (config == null || config.isBlank()) {
+                if (applicationName == null || applicationName.isBlank()) {
+                    throw new IllegalStateException("configstream names this service's collections after "
+                            + "spring.application.name, which is not set. Set it (e.g. spring.application.name: orders "
+                            + "gives orders_config), or set configstream.mongo.config-collection.");
+                }
+                config = applicationName + "_config";
+            }
+            String history = mongo.getHistoryCollection();
+            if (history == null || history.isBlank()) {
+                history = config + "_history";
+            }
+            if (config.equals(history)) {
+                throw new IllegalStateException("configstream.mongo.config-collection and history-collection are both '"
+                        + config + "'; they must differ.");
+            }
+            return new ConfigStreamCollections(config, history);
         }
     }
 

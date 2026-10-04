@@ -162,7 +162,7 @@ class ConfigStreamAdminEndToEndIT {
                 "--configstream.manifest=classpath:e2e/configstream.yml",
                 "--configstream.mongo.uri=" + TestMongo.uri(),
                 "--configstream.mongo.database=" + TestMongo.database(),
-                "--configstream.mongo.collection=" + collectionName(name),
+                "--configstream.mongo.config-collection=" + collectionName(name),
                 "--configstream.internal.secret=" + SECRET,
                 "--configstream.admin.url=" + adminUrl,
                 "--configstream.admin.heartbeat-interval=200ms",

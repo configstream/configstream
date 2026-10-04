@@ -173,10 +173,16 @@ public class ConfigStreamProperties {
         /** Database holding the config collection. Defaults to the database named in the URI. */
         private String database;
 
-        /** Collection holding one document per config key. */
-        private String collection = "config";
+        /**
+         * Collection holding one document per property. Defaults to {@code <spring.application.name>_config}, so every
+         * service gets its own collection even when services share a database.
+         */
+        private String configCollection;
 
-        /** Append-only collection recording every change made through configstream. Defaults to {@code <collection>_history}. */
+        /**
+         * Append-only collection recording every change made through configstream. Defaults to the config collection's
+         * name followed by {@code _history}.
+         */
         private String historyCollection;
 
         public String getUri() {
@@ -195,12 +201,12 @@ public class ConfigStreamProperties {
             this.database = database;
         }
 
-        public String getCollection() {
-            return collection;
+        public String getConfigCollection() {
+            return configCollection;
         }
 
-        public void setCollection(String collection) {
-            this.collection = collection;
+        public void setConfigCollection(String configCollection) {
+            this.configCollection = configCollection;
         }
 
         public String getHistoryCollection() {

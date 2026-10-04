@@ -157,10 +157,10 @@ class ConfigStreamAdminEndToEndIT {
         return new SpringApplicationBuilder(DemoServiceApplication.class).run(
                 "--server.port=0",
                 "--spring.application.name=" + name,
-                NO_MONGO_AUTOCONFIG,
                 "--configstream.team=team-a",
                 "--configstream.manifest=classpath:e2e/configstream.yml",
-                "--configstream.mongo.uri=" + TestMongo.uri(),
+                // The service's own MongoDB connection, which configstream shares
+                "--spring.data.mongodb.uri=" + TestMongo.uri(),
                 "--configstream.mongo.database=" + TestMongo.database(),
                 "--configstream.mongo.config-collection=" + collectionName(name),
                 "--configstream.internal.secret=" + SECRET,

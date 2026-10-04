@@ -9,6 +9,8 @@ import static org.awaitility.Awaitility.await;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import io.github.configstream.api.ConfigCache;
+import io.github.configstream.api.ConfigChange;
+import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigDeletion;
 import io.github.configstream.api.ConfigUpdate;
 import io.github.configstream.api.ConfigValue;
@@ -185,6 +187,55 @@ class MongoChangeStreamSourceIT {
 
         awaitCache().until(cache::getAll, Map.of("feature.x.enabled", new ConfigValue(PropertyType.BOOLEAN, true))::equals);
         assertThat(source.loadInitial()).isEqualTo(cache.getAll());
+    }
+
+    @Test
+    void reportsItsConnectionStatus() {
+        assertThat(source.status()).as("not started").isNull();
+
+        source.start(cache);
+        assertThat(source.status().connected()).isTrue();
+        assertThat(source.status().lastChangeAt()).isNull();
+
+        collection.insertOne(property("limits.max", "int", 1));
+        awaitValue("limits.max", 1);
+        assertThat(source.status().lastChangeAt()).isNotNull();
+    }
+
+    @Test
+    void theWatcherSurvivesAnErrorAndReloadsWhatItMissed() {
+        // A listener that hits a JVM Error once, as an OutOfMemoryError would; before, that ended the watcher thread
+        // and froze this instance's config for good
+        ConfigChangeListener failingOnce = new ConfigChangeListener() {
+            private boolean failed;
+
+            @Override
+            public void onSnapshot(Map<String, ConfigValue> snapshot) {
+                cache.onSnapshot(snapshot);
+            }
+
+            @Override
+            public void onChange(ConfigChange change) {
+                if (!failed) {
+                    failed = true;
+                    throw new StackOverflowError("simulated");
+                }
+                cache.onChange(change);
+            }
+        };
+        source.start(failingOnce);
+
+        collection.insertOne(property("first.key", "int", 1));   // hits the error
+        collection.insertOne(property("second.key", "int", 2));
+
+        // The restart reloads everything, so the change that failed isn't lost either
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(cache.getAll()).isEqualTo(Map.of(
+                "first.key", new ConfigValue(PropertyType.INT, 1),
+                "second.key", new ConfigValue(PropertyType.INT, 2))));
+        await().atMost(Duration.ofSeconds(5)).until(() -> source.status().connected());
+
+        collection.insertOne(property("third.key", "int", 3));
+        awaitValue("third.key", 3);
     }
 
     @Test

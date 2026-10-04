@@ -29,6 +29,14 @@ public interface ConfigChangeSource extends AutoCloseable {
     /** Stops watching and releases resources. Safe to call more than once. */
     void stop();
 
+    /**
+     * Whether the source is receiving changes right now, or {@code null} if it doesn't report it (or hasn't
+     * started). Used by health checks.
+     */
+    default ConfigSourceStatus status() {
+        return null;
+    }
+
     @Override
     default void close() {
         stop();

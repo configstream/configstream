@@ -177,6 +177,20 @@ configstream:
 - If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
   secret is what authenticates these calls.
 
+### When the connection to MongoDB fails
+
+Each instance keeps its last known values while cut off, then reconnects and catches up on every change it missed
+(or reloads everything if it was away too long).
+
+- **Dead connections are noticed.** A connection dropped silently by a firewall fails after
+  `configstream.mongo.socket-timeout` (default `30s`) and is reopened. A `socketTimeoutMS` in the URI takes precedence.
+- **The watcher can't die silently.** If it stops on an unexpected error, it restarts and reloads all values.
+- **Health check.** With Spring Boot Actuator, `/actuator/health` has a `configstream` entry: UP while connected, still
+  UP while reconnecting after a short interruption, and DOWN once cut off longer than `configstream.health.down-after`
+  (default `2m`), with the last error. Use it for alerts or readiness, not for a liveness check that restarts the app:
+  if MongoDB is down, restarting every instance doesn't help. Turn it off with
+  `management.health.configstream.enabled=false`.
+
 ## Admin server
 
 The admin server is the app services register with (`configstream.admin.url`). It shows every registered service, its

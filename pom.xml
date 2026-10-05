@@ -146,4 +146,88 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+          Publishing to Maven Central: mvn -P release deploy
+          Needs the Central Portal token in ~/.m2/settings.xml (server id "central") and the GPG key's passphrase in
+          the MAVEN_GPG_PASSPHRASE environment variable. Uploads are left for review in the portal, not published
+          automatically: check them under Deployments, then click Publish.
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.11.2</version>
+                        <configuration>
+                            <release>${java.version}</release>
+                            <!-- Don't fail the release on Javadoc style warnings -->
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.7</version>
+                        <configuration>
+                            <!-- Reads the passphrase from MAVEN_GPG_PASSPHRASE, never from a file -->
+                            <bestPractices>true</bestPractices>
+                            <keyname>592FB5FE99CC80BD</keyname>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.8.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <!-- Review the upload in the portal before it goes public: releases can't be deleted -->
+                            <autoPublish>false</autoPublish>
+                            <waitUntil>validated</waitUntil>
+                            <!-- The sample apps are for trying configstream locally, not for publishing -->
+                            <excludeArtifacts>
+                                <artifact>demo-admin</artifact>
+                                <artifact>demo-service</artifact>
+                            </excludeArtifacts>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

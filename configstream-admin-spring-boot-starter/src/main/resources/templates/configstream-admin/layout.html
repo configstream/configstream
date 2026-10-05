@@ -3,7 +3,7 @@
 <head th:fragment="head(title)">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${title} + ' · configstream admin'">configstream admin</title>
+    <title th:text="${title} + ' · configstream console'">configstream console</title>
     <!--/* v= changes whenever the files do, so browsers never keep using an old copy after an upgrade */-->
     <link rel="stylesheet" th:href="@{/configstream-admin/admin.css(v=${configStreamAdminAssets})}">
     <link rel="icon" th:href="@{/configstream-admin/logo.svg}" type="image/svg+xml">
@@ -18,7 +18,7 @@
                   stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
         <span class="cs-brand-name">configstream</span>
-        <span class="cs-brand-sub">admin</span>
+        <span class="cs-brand-sub">console</span>
     </a>
     <div class="cs-spacer"></div>
     <div class="cs-user" th:if="${configStreamAdminUser}">
@@ -67,17 +67,18 @@
         <span th:unless="${p.isBoolean()}" class="cs-value" th:text="${p.value()}">200</span>
     </span>
     <span class="cs-actions">
-        <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${serviceName}, key=${p.key()})}">
+        <a class="cs-act" th:if="${canEdit}" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${serviceName}, key=${p.key()})}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Edit</a>
+        <span th:unless="${canEdit}" aria-hidden="true"></span>
         <a class="cs-act" th:href="@{__${configStreamAdminBase}__/services/{name}/history(name=${serviceName}, key=${p.key()})}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>History</a>
-        <a class="cs-act danger" th:if="${p.orphan()}"
+        <a class="cs-act danger" th:if="${p.orphan() and canDelete}"
            th:href="@{__${configStreamAdminBase}__/services/{name}/delete(name=${serviceName}, key=${p.key()})}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</a>
-        <span th:unless="${p.orphan()}" aria-hidden="true"></span>
+        <span th:unless="${p.orphan() and canDelete}" aria-hidden="true"></span>
     </span>
 </div>
 

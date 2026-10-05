@@ -1,0 +1,69 @@
+# configstream in two minutes: MongoDB, the admin server and two instances of an "orders" service.
+#
+#   docker compose -f quickstart/compose.yml up --build
+#
+# Then open http://localhost:8090 (sign in as alice / alice-local), change a value, and watch
+# http://localhost:8081/demo and http://localhost:8082/demo pick it up within a second.
+# Stop with Ctrl+C; remove everything with: docker compose -f quickstart/compose.yml down -v
+#
+# For trying configstream locally only: the passwords and secrets below are public.
+
+name: configstream-quickstart
+
+services:
+  mongo:
+    image: mongo:7.0
+    # Change streams need a replica set; one node is enough
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      # Initiates the replica set on first run (as mongo:27017, the name the other containers use); a no-op afterwards
+      test: >
+        echo "try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }"
+        | mongosh --quiet
+      interval: 5s
+      timeout: 30s
+      retries: 30
+    volumes:
+      - mongo-data:/data/db
+
+  admin:
+    build:
+      context: ..
+      dockerfile: quickstart/Dockerfile
+    image: configstream-quickstart
+    command: ["java", "-jar", "demo-admin.jar"]
+    environment:
+      # Services register from other containers here, so local mode (same machine only) would turn them away.
+      # Fine on this private Docker network; real deployments use tokens (see the README).
+      CONFIGSTREAM_ADMINSERVER_ALLOWUNAUTHENTICATEDREGISTRATION: "true"
+    ports:
+      - "8090:8090"
+
+  orders-1:
+    image: configstream-quickstart
+    command: ["java", "-jar", "demo-service.jar"]
+    environment: &orders
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/orders?replicaSet=rs0&socketTimeoutMS=30000
+      CONFIGSTREAM_ADMIN_URL: http://admin:8090
+    ports:
+      - "8081:8081"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      admin:
+        condition: service_started
+
+  orders-2:
+    image: configstream-quickstart
+    command: ["java", "-jar", "demo-service.jar"]
+    environment: *orders
+    ports:
+      - "8082:8081"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      admin:
+        condition: service_started
+
+volumes:
+  mongo-data:

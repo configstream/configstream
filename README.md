@@ -24,6 +24,26 @@ config propagation without operating a separate config server.
 **Not for:** secrets/credentials (use Vault or your cloud secrets manager), or teams needing percentage rollouts /
 A/B experimentation (see Unleash or LaunchDarkly).
 
+## Try it in two minutes
+
+With only Docker installed, start MongoDB, the admin server and two instances of a sample `orders` service:
+
+```bash
+git clone https://github.com/configstream/configstream.git
+cd configstream
+docker compose -f quickstart/compose.yml up --build
+```
+
+The first start builds the sample apps, which takes a few minutes. Then:
+
+1. Open http://localhost:8081/demo and http://localhost:8082/demo: two instances showing the same live values.
+2. Open the admin server at http://localhost:8090 and sign in as `alice` / `alice-local`.
+3. Open **orders**, edit `limits.max`, review and apply.
+4. Refresh both `/demo` pages: each instance shows the new value within about a second, without a restart.
+
+Stop with Ctrl+C, and remove everything with `docker compose -f quickstart/compose.yml down -v`. The passwords and
+secrets in the quick start are public, for trying configstream locally only.
+
 ## Quick start
 
 Requirements: Java 17+, Spring Boot 3.x, and a MongoDB **replica set** (MongoDB Atlas always is one; for a local

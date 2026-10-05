@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.configstream</groupId>
         <artifactId>configstream-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -41,6 +41,8 @@
     </dependencies>
 
     <build>
+        <!-- A fixed name, so run commands don't change with each version -->
+        <finalName>demo-service</finalName>
         <plugins>
             <plugin>
                 <!-- Generates Feature, Limits, Checkout... from src/main/resources/configstream.yml -->
@@ -57,7 +59,7 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- Builds a runnable jar: java -jar target/demo-service-0.1.0-SNAPSHOT.jar -->
+                <!-- Builds a runnable jar: java -jar target/demo-service.jar -->
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>

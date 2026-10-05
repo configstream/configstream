@@ -425,9 +425,9 @@ login with three local test users: `alice` / `alice-local` (team-a, which owns `
 who sees no services) and `admin` / `admin-local` (sees everything).
 
 ```bash
-java -jar samples/demo-admin/target/demo-admin-0.1.0-SNAPSHOT.jar
-java -jar samples/demo-service/target/demo-service-0.1.0-SNAPSHOT.jar                     # :8081
-java -jar samples/demo-service/target/demo-service-0.1.0-SNAPSHOT.jar --server.port=8082   # second instance
+java -jar samples/demo-admin/target/demo-admin.jar
+java -jar samples/demo-service/target/demo-service.jar                     # :8081
+java -jar samples/demo-service/target/demo-service.jar --server.port=8082   # second instance
 ```
 
 ## License

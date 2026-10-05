@@ -1,0 +1,57 @@
+name: Quick start
+
+# Runs quickstart/compose.yml the way a visitor would, and checks a config change reaches every instance.
+on:
+  push:
+    paths: [ "quickstart/**", "samples/**", "**/pom.xml", ".github/workflows/quickstart.yml" ]
+  pull_request:
+
+jobs:
+  quickstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the quick start
+        run: docker compose -f quickstart/compose.yml up -d --build
+
+      - name: Wait for both orders instances
+        run: |
+          for port in 8081 8082; do
+            for i in $(seq 1 60); do
+              curl -sf "http://localhost:$port/demo" > /dev/null && break
+              sleep 3
+            done
+            curl -sf "http://localhost:$port/demo"; echo
+          done
+
+      - name: Both instances registered with the admin server
+        run: |
+          for i in $(seq 1 20); do
+            [ "$(docker compose -f quickstart/compose.yml logs admin | grep -c 'Registered orders/')" -ge 2 ] && exit 0
+            sleep 3
+          done
+          docker compose -f quickstart/compose.yml logs admin
+          exit 1
+
+      - name: A change written through one instance reaches the other
+        run: |
+          curl -sf -X POST http://localhost:8081/internal/config/update \
+            -H 'Content-Type: application/json' -H 'X-ConfigStream-Secret: local-dev-secret-123456' \
+            -d '{"key":"limits.max","value":"42","changedBy":"ci","comment":"quick start check"}'
+          echo
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:8082/demo | grep -q '"limits.max":42' && echo "orders-2 sees 42" && exit 0
+            sleep 1
+          done
+          curl -s http://localhost:8082/demo; echo
+          exit 1
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f quickstart/compose.yml logs
+
+      - name: Stop
+        if: always()
+        run: docker compose -f quickstart/compose.yml down -v

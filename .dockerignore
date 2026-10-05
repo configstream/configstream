@@ -1,0 +1,7 @@
+# Keeps the quick start's Docker build context small and reproducible
+**/target/
+.git/
+.idea/
+.claude/
+.vscode/
+*.iml

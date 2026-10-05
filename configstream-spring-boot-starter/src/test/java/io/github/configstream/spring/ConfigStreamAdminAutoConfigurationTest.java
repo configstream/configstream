@@ -19,6 +19,10 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
 
 class ConfigStreamAdminAutoConfigurationTest {
 
@@ -116,10 +120,64 @@ class ConfigStreamAdminAutoConfigurationTest {
         });
     }
 
+    @Test
+    void sendsATokenIdentifyingTheServiceWhenConfigured() throws IOException {
+        HttpServer tokens = tokenEndpoint();
+        try {
+            String tokenUri = "http://localhost:" + tokens.getAddress().getPort() + "/oauth2/token";
+            withAdmin()
+                    .withBean(ClientRegistrationRepository.class, () -> new InMemoryClientRegistrationRepository(
+                            ClientRegistration.withRegistrationId("configstream")
+                                    .clientId("orders")
+                                    .clientSecret("orders-client-secret")
+                                    .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                                    .tokenUri(tokenUri)
+                                    .build()))
+                    .withPropertyValues("configstream.admin.oauth2-client=configstream")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        await().atMost(WAIT).until(() -> admin.count("PUT /api/instances/orders-1/heartbeat") >= 2);
+                        assertThat(admin.authorizations).isNotEmpty().allMatch("Bearer token-for-orders"::equals);
+                        // Fetched once, then reused for every heartbeat until it expires
+                        assertThat(tokenRequests.get()).isEqualTo(1);
+                    });
+        } finally {
+            tokens.stop(0);
+        }
+    }
+
+    @Test
+    void failsClearlyWhenTheTokenRegistrationIsMissing() {
+        withAdmin().withPropertyValues("configstream.admin.oauth2-client=configstream")
+                .run(context -> assertThat(context).hasFailed().getFailure().rootCause()
+                        .hasMessageContaining("there is no spring.security.oauth2.client.registration.configstream"));
+    }
+
+    private final AtomicInteger tokenRequests = new AtomicInteger();
+
+    /** Stand-in for the company's identity provider: issues a client-credentials token. */
+    private HttpServer tokenEndpoint() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/oauth2/token", exchange -> {
+            tokenRequests.incrementAndGet();
+            String form = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            byte[] body = (form.contains("grant_type=client_credentials")
+                    ? "{\"access_token\":\"token-for-orders\",\"token_type\":\"Bearer\",\"expires_in\":3600}"
+                    : "{\"error\":\"unsupported_grant_type\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(form.contains("grant_type=client_credentials") ? 200 : 400, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
     /** Minimal stand-in for the admin server API, recording every request it receives. */
     static class FakeAdmin implements AutoCloseable {
         final List<String> requests = new CopyOnWriteArrayList<>();
         final List<String> registrationBodies = new CopyOnWriteArrayList<>();
+        final List<String> authorizations = new CopyOnWriteArrayList<>();
         private final AtomicInteger failStatus = new AtomicInteger();
         private volatile boolean forgotten;
         private final HttpServer server;
@@ -149,6 +207,10 @@ class ConfigStreamAdminAutoConfigurationTest {
         private void handle(HttpExchange exchange) throws IOException {
             String method = exchange.getRequestMethod();
             requests.add(method + " " + exchange.getRequestURI().getPath());
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+            if (authorization != null) {
+                authorizations.add(authorization);
+            }
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             int status;
             if (failStatus.get() != 0) {

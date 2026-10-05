@@ -6,6 +6,7 @@ import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -33,15 +34,19 @@ public class ConfigStreamAdminAutoConfiguration {
 
     @Bean
     AdminRegistration configStreamAdminRegistration(ConfigStreamProperties properties, Environment environment,
-            ObjectProvider<Manifest> manifest) {
+            ObjectProvider<Manifest> manifest, ListableBeanFactory beans) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(READ_TIMEOUT);
-        RestClient http = RestClient.builder()
+        RestClient.Builder http = RestClient.builder()
                 .baseUrl(properties.getAdmin().getUrl())
-                .requestFactory(requestFactory)
-                .build();
-        return new AdminRegistration(http, () -> instanceInfo(properties, environment, manifest.getIfAvailable(Manifest::empty)),
+                .requestFactory(requestFactory);
+        String oauth2Client = properties.getAdmin().getOauth2Client();
+        if (oauth2Client != null && !oauth2Client.isBlank()) {
+            AdminTokens.apply(http, oauth2Client, beans);
+        }
+        return new AdminRegistration(http.build(),
+                () -> instanceInfo(properties, environment, manifest.getIfAvailable(Manifest::empty)),
                 properties.getAdmin().getHeartbeatInterval());
     }
 

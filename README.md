@@ -261,9 +261,47 @@ server.servlet.session.tracking-modes: cookie   # recommended: keeps session ids
 The registration API is always at `/api/instances`, whatever the dashboard path. The dashboard's templates and CSS
 live under `configstream-admin/`, so they do not clash with the host app's own.
 
-> **No login yet, and it can change live config.** Anyone who can reach the admin app can edit any registered
-> service, and "changed by" is whatever they type. Login, team-based access control and CSRF protection arrive in
-> Phase 6. Until then, run it only on a trusted local or dev network.
+### Securing registration
+
+Services prove who they are with tokens from your identity provider (Okta, Azure AD, Keycloak and so on), using the
+standard OAuth2 client-credentials flow. The admin server never stores service passwords.
+
+**On each service** (with `spring-boot-starter-oauth2-client`):
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          configstream:
+            client-id: orders
+            client-secret: ${ORDERS_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          configstream:
+            token-uri: https://login.example.com/oauth2/token
+configstream:
+  admin:
+    oauth2-client: configstream     # send these tokens to the admin server
+```
+
+Tokens are fetched once, cached and renewed before they expire, so heartbeats don't call your identity provider.
+
+**On the admin server**, your application validates the tokens, for example with
+`spring-boot-starter-oauth2-resource-server` protecting `/api/instances/**`. configstream then checks that the token
+belongs to the service it acts for: the token's identity (its principal name, the `sub` claim by default) must equal
+the service's `spring.application.name`, so a token for `orders` can't register, heartbeat or remove `payments`
+(403). If your provider puts the service name in another claim, set
+`spring.security.oauth2.resourceserver.jwt.principal-claim-name`.
+
+**Without tokens**, the admin server accepts registrations only from its own machine ("local mode"), so trying
+configstream on a laptop needs no setup, and a forgotten setting never leaves a real server open. To accept anyone on
+a network you fully trust, set `configstream.admin-server.allow-unauthenticated-registration: true`.
+
+> **People's login is up to your application.** Anyone who can open the admin app can edit any registered service, and
+> "changed by" is whatever they type. Add login to the application that hosts the admin server (e.g. Spring Security),
+> or run it only on a trusted network.
 
 ## Local development
 

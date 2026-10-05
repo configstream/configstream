@@ -30,6 +30,12 @@
             <artifactId>spring-webmvc</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Optional: tokens for calling the admin server, in apps that use Spring Security's OAuth2 client -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-client</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Optional: the health indicator only activates in apps that use Spring Boot Actuator -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

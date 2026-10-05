@@ -30,10 +30,25 @@ public class ConfigStreamAdminProperties {
     /** Secret used for services not listed in {@code service-secrets}. */
     private String defaultServiceSecret;
 
+    /**
+     * Accept registrations from callers that aren't authenticated, from any address. Off by default: then services
+     * register with a token identifying them (authenticated by this application, e.g. as an OAuth2 resource server),
+     * and without a token only from this machine. Turn on only on networks where every caller is trusted.
+     */
+    private boolean allowUnauthenticatedRegistration;
+
     private final Dashboard dashboard = new Dashboard();
 
     public Dashboard getDashboard() {
         return dashboard;
+    }
+
+    public boolean isAllowUnauthenticatedRegistration() {
+        return allowUnauthenticatedRegistration;
+    }
+
+    public void setAllowUnauthenticatedRegistration(boolean allowUnauthenticatedRegistration) {
+        this.allowUnauthenticatedRegistration = allowUnauthenticatedRegistration;
     }
 
     public Duration getLeaseDuration() {

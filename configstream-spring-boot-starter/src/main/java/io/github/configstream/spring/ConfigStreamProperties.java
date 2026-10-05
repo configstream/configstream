@@ -132,6 +132,22 @@ public class ConfigStreamProperties {
         /** How often to send a heartbeat to the admin app. */
         private Duration heartbeatInterval = Duration.ofSeconds(15);
 
+        /**
+         * Registration ID of a {@code spring.security.oauth2.client.registration.*} entry (grant type
+         * {@code client_credentials}) whose tokens identify this service to the admin server. Tokens are fetched,
+         * cached and renewed automatically. Needs {@code spring-boot-starter-oauth2-client}. Without it, the admin
+         * server only accepts this service from its own machine, unless it is configured to trust everyone.
+         */
+        private String oauth2Client;
+
+        public String getOauth2Client() {
+            return oauth2Client;
+        }
+
+        public void setOauth2Client(String oauth2Client) {
+            this.oauth2Client = oauth2Client;
+        }
+
         public String getUrl() {
             return url;
         }

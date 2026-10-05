@@ -35,20 +35,29 @@ MongoDB change streams push it to every instance.
 
 ## Usage (Spring Boot)
 
-Add `configstream-spring-boot-starter` to your dependencies, then point it at a MongoDB replica set. Each service
-uses its own collections, named after the service, so several services can safely share one database.
+configstream is for Spring Boot services that already use MongoDB. Add `configstream-spring-boot-starter` to your
+dependencies; it uses your application's own MongoDB connection (its `MongoClient`, e.g. from
+`spring-boot-starter-data-mongodb`) and opens none of its own. The MongoDB must be a replica set (Atlas always is),
+because changes arrive through change streams.
 
 ```yaml
 spring:
   application:
-    name: orders              # collections: orders_config and orders_config_history
+    name: orders              # configstream's collections: orders_config and orders_config_history
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/orders?replicaSet=rs0&socketTimeoutMS=30000
 
 configstream:
   mongo:
-    uri: mongodb://localhost:27017/mydb?replicaSet=rs0
+    # database: orders                       # optional, defaults to your application's database
     # config-collection: orders_settings     # optional, defaults to <spring.application.name>_config
     # history-collection: orders_audit       # optional, defaults to <config-collection>_history
 ```
+
+Each service uses its own collections, named after the service, so several services can safely share one database.
+Keep them in the database your service already uses: the load then spreads over your teams' clusters. Each instance
+adds one change stream and borrows one connection from your pool for it.
 
 Both collections are created automatically on the first start; the service's database user needs read and write
 access (MongoDB's `readWrite` role).
@@ -182,8 +191,10 @@ configstream:
 Each instance keeps its last known values while cut off, then reconnects and catches up on every change it missed
 (or reloads everything if it was away too long).
 
-- **Dead connections are noticed.** A connection dropped silently by a firewall fails after
-  `configstream.mongo.socket-timeout` (default `30s`) and is reopened. A `socketTimeoutMS` in the URI takes precedence.
+- **Dead connections are noticed if your client has a socket timeout.** Set `socketTimeoutMS` (e.g. `30000`) on your
+  MongoDB URI: a connection dropped silently by a firewall then fails and is reopened. Without it, the MongoDB driver
+  waits indefinitely, and the instance may miss changes for a long time. configstream logs a warning at startup when
+  `spring.data.mongodb.uri` has no `socketTimeoutMS`.
 - **The watcher can't die silently.** If it stops on an unexpected error, it restarts and reloads all values.
 - **Health check.** With Spring Boot Actuator, `/actuator/health` has a `configstream` entry: UP while connected, still
   UP while reconnecting after a short interruption, and DOWN once cut off longer than `configstream.health.down-after`

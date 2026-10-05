@@ -16,7 +16,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
 import org.bson.Document;
@@ -41,16 +40,18 @@ import org.slf4j.LoggerFactory;
  * <p><b>Failures:</b> the driver retries one transient error by itself. Beyond that, this class
  * reconnects with exponential backoff and resumes from the last seen resume token. If the token
  * has aged out of the oplog, or the collection is dropped/renamed, it reloads a fresh snapshot.
- * A dead connection is only noticed if the client has a socket timeout (the starter sets one by default). Anything
- * that would end the watcher thread, such as an {@link Error}, restarts it with a full reload instead.
- * {@link #status()} reports whether it is connected, for health checks.
+ * A dead connection is only noticed if the client has a socket timeout ({@code socketTimeoutMS}). Anything that would
+ * end the watcher thread, such as an {@link Error}, restarts it with a full reload instead. {@link #status()} reports
+ * whether it is connected, for health checks.
+ *
+ * <p>While nothing changes, each wait for new changes lasts MongoDB's default (about a second) before asking again; a
+ * change is delivered as soon as it happens, whatever the wait.
  */
 public class MongoChangeStreamSource implements ConfigChangeSource {
 
     private static final Logger log = LoggerFactory.getLogger(MongoChangeStreamSource.class);
 
     private static final int CHANGE_STREAM_HISTORY_LOST = 286;
-    private static final Duration MAX_AWAIT = Duration.ofMillis(500);
     private static final Duration MIN_BACKOFF = Duration.ofMillis(200);
     private static final Duration MAX_BACKOFF = Duration.ofSeconds(30);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
@@ -215,9 +216,7 @@ public class MongoChangeStreamSource implements ConfigChangeSource {
     }
 
     private MongoChangeStreamCursor<ChangeStreamDocument<Document>> openStream(BsonDocument resumeAfter) {
-        var stream = collection.watch()
-                .fullDocument(FullDocument.UPDATE_LOOKUP)
-                .maxAwaitTime(MAX_AWAIT.toMillis(), TimeUnit.MILLISECONDS);
+        var stream = collection.watch().fullDocument(FullDocument.UPDATE_LOOKUP);
         if (resumeAfter != null) {
             stream = stream.resumeAfter(resumeAfter);
         }

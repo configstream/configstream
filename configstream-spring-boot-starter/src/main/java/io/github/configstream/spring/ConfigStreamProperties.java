@@ -186,15 +186,13 @@ public class ConfigStreamProperties {
         }
     }
 
+    /**
+     * Where configstream keeps its collections. The connection is always the application's own {@code MongoClient}
+     * (e.g. from {@code spring.data.mongodb.uri}), which must point at a replica set, since change streams need one.
+     */
     public static class Mongo {
 
-        /**
-         * Connection string for the config store. Must point at a replica set, since change streams
-         * need one, e.g. {@code mongodb://host:27017/mydb?replicaSet=rs0}.
-         */
-        private String uri;
-
-        /** Database holding the config collection. Defaults to the database named in the URI. */
+        /** Database holding the collections. Defaults to the application's MongoDB database. */
         private String database;
 
         /**
@@ -208,29 +206,6 @@ public class ConfigStreamProperties {
          * name followed by {@code _history}.
          */
         private String historyCollection;
-
-        /**
-         * How long to wait for an answer from MongoDB before treating the connection as dead and reconnecting. Without
-         * it, a connection dropped silently by a firewall can leave this instance missing changes for hours. Ignored
-         * if the URI sets {@code socketTimeoutMS}.
-         */
-        private Duration socketTimeout = Duration.ofSeconds(30);
-
-        public Duration getSocketTimeout() {
-            return socketTimeout;
-        }
-
-        public void setSocketTimeout(Duration socketTimeout) {
-            this.socketTimeout = socketTimeout;
-        }
-
-        public String getUri() {
-            return uri;
-        }
-
-        public void setUri(String uri) {
-            this.uri = uri;
-        }
 
         public String getDatabase() {
             return database;

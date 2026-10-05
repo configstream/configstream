@@ -1,11 +1,7 @@
 package io.github.configstream.spring;
 
 import com.mongodb.ConnectionString;
-import com.mongodb.MongoClientSettings;
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import io.github.configstream.api.ConfigCache;
 import io.github.configstream.api.ConfigChangeSource;
@@ -22,6 +18,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -34,17 +32,18 @@ import org.springframework.core.io.ResourceLoader;
  * declared properties missing from the store, loads the store into memory and exposes it as a {@link ConfigService}
  * bean.
  *
+ * <p>The store is the application's own MongoDB, through its {@code MongoClient} bean (normally from
+ * {@code spring-boot-starter-data-mongodb}); configstream opens no connection of its own.
+ *
  * <p>Applications can replace the backing store by defining their own {@link ConfigChangeSource}
- * bean (plus a {@link ConfigWriter} if they want the internal update endpoint); the Mongo
- * connection is then not created at all.
+ * bean (plus a {@link ConfigWriter} if they want the internal update endpoint); MongoDB is then not used at all.
  */
-@AutoConfiguration
+@AutoConfiguration(after = MongoAutoConfiguration.class)
 @ConditionalOnProperty(prefix = "configstream", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(ConfigStreamProperties.class)
 public class ConfigStreamAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ConfigStreamAutoConfiguration.class);
-    private static final Duration MIN_SOCKET_TIMEOUT = Duration.ofSeconds(5);
 
     @Bean
     @ConditionalOnMissingBean
@@ -76,77 +75,86 @@ public class ConfigStreamAutoConfiguration {
     @ConditionalOnMissingBean(ConfigChangeSource.class)
     static class MongoSourceConfiguration {
 
-        // Deliberately not a MongoClient bean: that would stop Spring Boot from creating the
-        // application's own MongoClient, silently pointing its data access at the config store.
-        @Bean(destroyMethod = "close")
-        ConfigStreamMongoClient configStreamMongoClient(ConfigStreamProperties properties) {
-            ConfigStreamProperties.Mongo mongo = properties.getMongo();
-            if (mongo.getUri() == null || mongo.getUri().isBlank()) {
-                throw new IllegalStateException(
-                        "configstream.mongo.uri is not set. Point it at your MongoDB replica set, e.g. "
-                                + "mongodb://localhost:27017/mydb?replicaSet=rs0, or set configstream.enabled=false.");
+        /**
+         * The application's own MongoDB connection, shared rather than duplicated: configstream adds no connection pool
+         * or server monitoring of its own, only its change stream and occasional writes on the application's pool.
+         */
+        @Bean
+        ConfigStreamDatabase configStreamDatabase(ObjectProvider<MongoClient> clients, ConfigStreamProperties properties,
+                ObjectProvider<MongoProperties> springMongo) {
+            MongoClient client = clients.getIfUnique();
+            if (client == null) {
+                throw new IllegalStateException("configstream uses your application's MongoClient, but there is no "
+                        + "single MongoClient bean. Add spring-boot-starter-data-mongodb and set spring.data.mongodb.uri "
+                        + "(a replica set, e.g. mongodb://localhost:27017/orders?replicaSet=rs0), define a MongoClient "
+                        + "bean, or set configstream.enabled=false.");
             }
-            ConnectionString uri = new ConnectionString(mongo.getUri());
-            String database = mongo.getDatabase() != null ? mongo.getDatabase() : uri.getDatabase();
+            MongoProperties spring = springMongo.getIfAvailable();
+            String database = properties.getMongo().getDatabase();
+            if ((database == null || database.isBlank()) && spring != null) {
+                database = spring.getMongoClientDatabase();
+            }
             if (database == null || database.isBlank()) {
-                throw new IllegalStateException(
-                        "No config database: add it to configstream.mongo.uri (mongodb://host/mydb?...) "
-                                + "or set configstream.mongo.database.");
+                throw new IllegalStateException("No config database: set configstream.mongo.database, or "
+                        + "spring.data.mongodb.database.");
             }
-            return new ConfigStreamMongoClient(MongoClients.create(clientSettings(uri, mongo.getSocketTimeout())), database);
+            warnIfNoSocketTimeout(spring);
+            return new ConfigStreamDatabase(client, database);
         }
 
         /**
-         * The connection settings, with a socket timeout unless the URI sets its own {@code socketTimeoutMS}. The
-         * driver's default is no timeout, so a connection dropped silently by a firewall would leave the change stream
-         * waiting, possibly for hours, instead of failing and reconnecting. The stream hears from the server about
-         * every half second, so the timeout only fires on a dead connection.
+         * The driver waits forever on a connection by default, so a connection a firewall drops silently can leave the
+         * change stream stuck until the operating system notices. The application's client is shared, so configstream
+         * can't change that itself; it can only point it out.
          */
-        static MongoClientSettings clientSettings(ConnectionString uri, Duration socketTimeout) {
-            MongoClientSettings.Builder settings = MongoClientSettings.builder().applyConnectionString(uri);
-            if (uri.getSocketTimeout() == null) {
-                if (socketTimeout.compareTo(MIN_SOCKET_TIMEOUT) < 0) {
-                    throw new IllegalStateException("configstream.mongo.socket-timeout must be at least "
-                            + MIN_SOCKET_TIMEOUT.toSeconds() + "s, since the change stream waits up to half a second "
-                            + "for each answer; it is " + socketTimeout.toMillis() + "ms.");
-                }
-                settings.applyToSocketSettings(s -> s.readTimeout(socketTimeout.toMillis(), TimeUnit.MILLISECONDS));
+        private static void warnIfNoSocketTimeout(MongoProperties spring) {
+            String uri = spring == null ? null : spring.getUri();
+            if (uri != null && new ConnectionString(uri).getSocketTimeout() == null) {
+                log.warn("spring.data.mongodb.uri sets no socketTimeoutMS, so if a firewall silently drops the "
+                        + "connection, this instance may miss config changes for a long time before it reconnects. "
+                        + "Consider adding socketTimeoutMS=30000 to the URI.");
             }
-            return settings.build();
         }
 
         @Bean
-        ConfigStreamCollections configStreamCollections(ConfigStreamMongoClient client, ConfigStreamProperties properties,
+        ConfigStreamCollections configStreamCollections(ConfigStreamDatabase database, ConfigStreamProperties properties,
                 Environment environment) {
             ConfigStreamCollections collections = ConfigStreamCollections.resolve(properties.getMongo(),
                     environment.getProperty("spring.application.name"));
             log.info("configstream uses collections '{}' and '{}' in database '{}'", collections.config(),
-                    collections.history(), client.database());
+                    collections.history(), database.name());
             return collections;
         }
 
         @Bean(destroyMethod = "stop")
-        ConfigChangeSource configStreamChangeSource(ConfigStreamMongoClient client, ConfigStreamCollections collections) {
-            return new MongoChangeStreamSource(collection(client, collections.config()));
+        ConfigChangeSource configStreamChangeSource(ConfigStreamDatabase database, ConfigStreamCollections collections) {
+            return new MongoChangeStreamSource(database.collection(collections.config()));
         }
 
         @Bean
         @ConditionalOnMissingBean(ConfigHistory.class)
-        MongoConfigHistory configStreamHistory(ConfigStreamMongoClient client, ConfigStreamCollections collections) {
-            MongoConfigHistory history = new MongoConfigHistory(collection(client, collections.history()));
+        MongoConfigHistory configStreamHistory(ConfigStreamDatabase database, ConfigStreamCollections collections) {
+            MongoConfigHistory history = new MongoConfigHistory(database.collection(collections.history()));
             history.ensureIndexes();
             return history;
         }
 
         @Bean
         @ConditionalOnMissingBean
-        ConfigWriter configStreamWriter(ConfigStreamMongoClient client, ConfigStreamCollections collections,
+        ConfigWriter configStreamWriter(ConfigStreamDatabase database, ConfigStreamCollections collections,
                 MongoConfigHistory history) {
-            return new MongoConfigWriter(client.client(), collection(client, collections.config()), history);
+            return new MongoConfigWriter(database.client(), database.collection(collections.config()), history);
         }
+    }
 
-        private static MongoCollection<Document> collection(ConfigStreamMongoClient client, String name) {
-            return client.client().getDatabase(client.database()).getCollection(name);
+    /**
+     * Where configstream keeps its collections: a database on the application's own {@code MongoClient}. Not closed by
+     * configstream; the client belongs to the application.
+     */
+    record ConfigStreamDatabase(MongoClient client, String name) {
+
+        MongoCollection<Document> collection(String collection) {
+            return client.getDatabase(name).getCollection(collection);
         }
     }
 
@@ -175,14 +183,6 @@ public class ConfigStreamAutoConfiguration {
                         + config + "'; they must differ.");
             }
             return new ConfigStreamCollections(config, history);
-        }
-    }
-
-    /** configstream's own connection, kept out of the application's {@code MongoClient} bean slot. */
-    record ConfigStreamMongoClient(MongoClient client, String database) implements AutoCloseable {
-        @Override
-        public void close() {
-            client.close();
         }
     }
 }

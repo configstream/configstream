@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -102,17 +103,19 @@ class ConfigStreamAutoConfigurationIT {
     }
 
     @Test
-    void collectionsAreNamedAfterTheServiceByDefault() {
+    void usesTheApplicationsClientAndDatabaseAndNamesCollectionsAfterTheService() {
         String service = "svc_" + UUID.randomUUID().toString().substring(0, 8);
         new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(MongoAutoConfiguration.class, ConfigStreamAutoConfiguration.class))
                 .withPropertyValues(
                         "spring.application.name=" + service,
-                        "configstream.mongo.uri=" + TestMongo.uri(),
-                        "configstream.mongo.database=" + TestMongo.database(),
+                        "spring.data.mongodb.uri=" + TestMongo.uri(),
+                        "spring.data.mongodb.database=" + TestMongo.database(),
                         "configstream.manifest=classpath:manifests/configstream.yml")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    // The application's client is the only one: configstream opens no connection of its own
+                    assertThat(context).hasSingleBean(com.mongodb.client.MongoClient.class);
                     var database = client.getDatabase(TestMongo.database());
                     assertThat(database.getCollection(service + "_config")
                             .find(eq("_id", "feature.funds.limit")).first()).isNotNull();
@@ -133,7 +136,7 @@ class ConfigStreamAutoConfigurationIT {
     void internalEndpointWritesThroughToMongoAndBackIntoTheCache() {
         String secret = "0123456789abcdef-it-secret";
         new WebApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(
+                .withConfiguration(AutoConfigurations.of(MongoAutoConfiguration.class,
                         ConfigStreamAutoConfiguration.class, ConfigStreamEndpointAutoConfiguration.class,
                         WebMvcAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
                         JacksonAutoConfiguration.class))
@@ -174,14 +177,14 @@ class ConfigStreamAutoConfigurationIT {
 
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(MongoAutoConfiguration.class, ConfigStreamAutoConfiguration.class))
                 .withBean(ConfigStreamAutoConfigurationTest.EventCollector.class)
                 .withPropertyValues(properties());
     }
 
     private String[] properties() {
         return new String[] {
-                "configstream.mongo.uri=" + TestMongo.uri(),
+                "spring.data.mongodb.uri=" + TestMongo.uri(),
                 "configstream.mongo.database=" + TestMongo.database(),
                 "configstream.mongo.config-collection=" + collectionName,
                 "configstream.manifest=classpath:manifests/configstream.yml"};

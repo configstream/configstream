@@ -2,6 +2,9 @@ package io.github.configstream.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+
 import io.github.configstream.api.ConfigChange;
 import io.github.configstream.api.ConfigChangeListener;
 import io.github.configstream.api.ConfigChangeSource;
@@ -29,14 +32,16 @@ class ConfigStreamAutoConfigurationTest {
             .withConfiguration(AutoConfigurations.of(ConfigStreamAutoConfiguration.class));
 
     @Test
-    void failsFastWhenUriIsMissing() {
-        runner.run(context -> assertThat(context).hasFailed()
-                .getFailure().rootCause().hasMessageContaining("configstream.mongo.uri is not set"));
+    void failsFastWithoutTheApplicationsMongoClient() {
+        runner.run(context -> assertThat(context).hasFailed().getFailure().rootCause()
+                .hasMessageContaining("configstream uses your application's MongoClient")
+                .hasMessageContaining("spring.data.mongodb.uri"));
     }
 
     @Test
     void failsFastWhenDatabaseIsMissing() {
-        runner.withPropertyValues("configstream.mongo.uri=mongodb://localhost:27017/?replicaSet=rs0")
+        // Creating a client doesn't connect, and the database is checked before anything is read
+        runner.withBean(MongoClient.class, () -> MongoClients.create("mongodb://localhost:1"))
                 .run(context -> assertThat(context).hasFailed()
                         .getFailure().rootCause().hasMessageContaining("No config database"));
     }
@@ -51,7 +56,7 @@ class ConfigStreamAutoConfigurationTest {
     void customSourceReplacesMongo() {
         runner.withUserConfiguration(FakeSourceConfig.class).run(context -> {
             assertThat(context).hasNotFailed()
-                    .doesNotHaveBean(ConfigStreamAutoConfiguration.ConfigStreamMongoClient.class);
+                    .doesNotHaveBean(ConfigStreamAutoConfiguration.ConfigStreamDatabase.class);
             assertThat(context.getBean(ConfigService.class).values()).isEqualTo(Map.of("a.key", ONE));
         });
     }

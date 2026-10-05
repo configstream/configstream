@@ -41,6 +41,12 @@ public class InstanceRegistry {
         }
     }
 
+    /** The service an instance registered for, if it is known. */
+    public Optional<String> serviceNameOf(String instanceId) {
+        Entry entry = instances.get(instanceId);
+        return entry == null ? Optional.empty() : Optional.of(entry.registration.serviceName());
+    }
+
     /** @return false if the instance is unknown, telling it to register again */
     public boolean heartbeat(String instanceId) {
         Instant now = clock.instant();

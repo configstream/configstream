@@ -36,11 +36,13 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /** The admin server in a host app: registration API and UI, with calls to services mocked out. */
 // The configstream starter (and so the Mongo driver) is on the test classpath for the end-to-end test
 @SpringBootTest(classes = AdminHostApplication.class, properties = {
         "configstream.enabled=false",
+        "configstream.admin-server.admin-groups=config-admins",
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration"})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD) // fresh registry per test
@@ -333,7 +335,7 @@ class ConfigStreamAdminServerTest {
 
     @Test
     void withALoginTheHeaderShowsTheUserInsteadOfTheWarning() throws Exception {
-        mvc.perform(get("/").principal(() -> "alice"))
+        mvc.perform(get("/").with(signedIn("alice", "team-a")))
                 .andExpect(content().string(allOf(
                         containsString("<span>alice</span>"),
                         not(containsString("No login: trusted networks only")))));
@@ -349,13 +351,50 @@ class ConfigStreamAdminServerTest {
                 .thenReturn(Optional.of(entry("limits.max", 3, "50", "75")));
 
         // No name to type
-        mvc.perform(get("/services/orders/edit").param("key", "limits.max").principal(() -> "alice"))
+        mvc.perform(get("/services/orders/edit").param("key", "limits.max").with(signedIn("alice", "team-a")))
                 .andExpect(content().string(not(containsString("name=\"changedBy\" value"))));
         // A submitted name is ignored: the history must show who really made the change
-        mvc.perform(post("/services/orders/update").principal(() -> "alice")
+        mvc.perform(post("/services/orders/update").with(signedIn("alice", "team-a"))
                         .param("key", "limits.max").param("value", "75").param("type", "int").param("changedBy", "mallory"))
                 .andExpect(redirectedUrl("/services/orders"));
         verify(serviceClient).update("orders", "limits.max", "75", "int", "alice", null);
+    }
+
+    @Test
+    void peopleOnlySeeTheirTeamsServices() throws Exception {
+        register("orders", "o-1", 8080);              // team-a
+        registerForTeam("billing", "b-1", 8081, "team-b");
+
+        mvc.perform(get("/").with(signedIn("alice", "team-a")))
+                .andExpect(content().string(allOf(
+                        containsString("href=\"/services/orders\""),
+                        not(containsString("href=\"/services/billing\"")),
+                        containsString("1 service"))));
+        mvc.perform(get("/").with(signedIn("carol", "team-a", "team-b")))
+                .andExpect(content().string(allOf(
+                        containsString("href=\"/services/orders\""), containsString("href=\"/services/billing\""))));
+        // Admin groups see everything
+        mvc.perform(get("/").with(signedIn("dave", "config-admins")))
+                .andExpect(content().string(containsString("href=\"/services/billing\"")));
+        // Without a login, everything is open, as the header warns
+        mvc.perform(get("/")).andExpect(content().string(containsString("href=\"/services/billing\"")));
+    }
+
+    @Test
+    void anotherTeamsServiceCantBeOpenedOrChangedEvenByAddress() throws Exception {
+        registerForTeam("billing", "b-1", 8081, "team-b");
+
+        // Reported as not registered, so its existence isn't revealed either
+        mvc.perform(get("/services/billing").with(signedIn("alice", "team-a"))).andExpect(status().isNotFound());
+        mvc.perform(get("/services/billing/history").param("key", "limits.max").with(signedIn("alice", "team-a")))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/services/billing/update").with(signedIn("alice", "team-a"))
+                        .param("key", "limits.max").param("value", "1").param("type", "int"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/services/billing/delete").with(signedIn("alice", "team-a")).param("key", "feature.old.flag"))
+                .andExpect(status().isNotFound());
+        verify(serviceClient, never()).update(any(), any(), any(), any(), any(), any());
+        verify(serviceClient, never()).delete(any(), any(), any(), any());
     }
 
     @Test
@@ -459,10 +498,13 @@ class ConfigStreamAdminServerTest {
                 null);
     }
 
+    /** What the test instances declare: feature.x.enabled (boolean) and limits.max (int). */
+    private static final String PROPERTIES = ",\"properties\":["
+            + "{\"key\":\"feature.x.enabled\",\"type\":\"boolean\",\"description\":null},"
+            + "{\"key\":\"limits.max\",\"type\":\"int\",\"description\":\"Maximum items per order\"}]";
+
     private void register(String service, String id, int port) throws Exception {
-        register(service, id, port, ",\"properties\":["
-                + "{\"key\":\"feature.x.enabled\",\"type\":\"boolean\",\"description\":null},"
-                + "{\"key\":\"limits.max\",\"type\":\"int\",\"description\":\"Maximum items per order\"}]");
+        register(service, id, port, PROPERTIES);
     }
 
     private void registerWithoutProperties(String service, String id, int port) throws Exception {
@@ -470,9 +512,28 @@ class ConfigStreamAdminServerTest {
     }
 
     private void register(String service, String id, int port, String properties) throws Exception {
+        registerForTeam(service, id, port, "team-a", properties);
+    }
+
+    private void registerForTeam(String service, String id, int port, String team) throws Exception {
+        registerForTeam(service, id, port, team, PROPERTIES);
+    }
+
+    private void registerForTeam(String service, String id, int port, String team, String properties) throws Exception {
         mvc.perform(post("/api/instances").contentType(MediaType.APPLICATION_JSON).content(
-                        "{\"serviceName\":\"%s\",\"instanceId\":\"%s\",\"host\":\"localhost\",\"port\":%d,\"team\":\"team-a\"%s}"
-                                .formatted(service, id, port, properties)))
+                        "{\"serviceName\":\"%s\",\"instanceId\":\"%s\",\"host\":\"localhost\",\"port\":%d,\"team\":\"%s\"%s}"
+                                .formatted(service, id, port, team, properties)))
                 .andExpect(status().isCreated());
+    }
+
+    /** A signed-in person in the given login groups, as the host application's security would leave the request. */
+    private static RequestPostProcessor signedIn(String name, String... groups) {
+        return request -> {
+            request.setUserPrincipal(() -> name);
+            for (String group : groups) {
+                request.addUserRole(group);
+            }
+            return request;
+        };
     }
 }

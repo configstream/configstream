@@ -1,6 +1,9 @@
 package io.github.configstream.admin.web;
 
 import io.github.configstream.admin.ConfigStreamAdminProperties;
+import io.github.configstream.admin.access.ConfigStreamAdminPermissions;
+import io.github.configstream.admin.access.TeamPermissions;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import io.github.configstream.admin.client.ServiceClient;
 import io.github.configstream.admin.registry.InstanceRegistry;
 import java.io.IOException;
@@ -38,14 +41,28 @@ public class ConfigStreamAdminWebConfiguration implements WebMvcConfigurer {
         return new TimeFormat(Clock.systemUTC());
     }
 
+    /** Who may see and change which service; replace it by defining your own {@link ConfigStreamAdminPermissions} bean. */
     @Bean
-    DashboardController configStreamAdminDashboardController(InstanceRegistry registry, ServiceClient client) {
-        return new DashboardController(registry, client);
+    @ConditionalOnMissingBean(ConfigStreamAdminPermissions.class)
+    TeamPermissions configStreamAdminPermissions(ConfigStreamAdminProperties properties) {
+        return new TeamPermissions(properties.getAdminGroups());
     }
 
     @Bean
-    ConfigEditController configStreamAdminConfigEditController(InstanceRegistry registry, ServiceClient client) {
-        return new ConfigEditController(registry, client, basePath);
+    AdminAccess configStreamAdminAccess(ConfigStreamAdminPermissions permissions) {
+        return new AdminAccess(permissions);
+    }
+
+    @Bean
+    DashboardController configStreamAdminDashboardController(InstanceRegistry registry, ServiceClient client,
+            AdminAccess access) {
+        return new DashboardController(registry, client, access);
+    }
+
+    @Bean
+    ConfigEditController configStreamAdminConfigEditController(InstanceRegistry registry, ServiceClient client,
+            AdminAccess access) {
+        return new ConfigEditController(registry, client, basePath, access);
     }
 
     @Bean

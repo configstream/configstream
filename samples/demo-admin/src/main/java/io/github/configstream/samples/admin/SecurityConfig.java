@@ -32,11 +32,16 @@ class SecurityConfig {
         return http.build();
     }
 
-    /** Local test users only: never use these, or plain-text passwords, anywhere real. */
+    /**
+     * Local test users only: never use these, or plain-text passwords, anywhere real. Their roles are their login
+     * groups: alice is in team-a (which owns the demo's orders service), bob in team-b, and admin in config-admins,
+     * which application.yml makes an admin group that sees every service.
+     */
     @Bean
     UserDetailsService users() {
         return new InMemoryUserDetailsManager(
-                User.withUsername("alice").password("{noop}alice-local").roles("USER").build(),
-                User.withUsername("bob").password("{noop}bob-local").roles("USER").build());
+                User.withUsername("alice").password("{noop}alice-local").roles("team-a").build(),
+                User.withUsername("bob").password("{noop}bob-local").roles("team-b").build(),
+                User.withUsername("admin").password("{noop}admin-local").roles("config-admins").build());
     }
 }

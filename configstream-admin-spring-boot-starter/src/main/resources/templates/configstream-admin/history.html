@@ -12,7 +12,7 @@
 
     <div class="cs-title">
         <h1 style="flex-grow: 1"><code th:text="${key}">limits.max</code></h1>
-        <a class="cs-button" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key})}">Edit value</a>
+        <a class="cs-button" th:if="${canEdit}" th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key})}">Edit value</a>
     </div>
 
     <th:block th:if="${historyError}"><div th:replace="~{configstream-admin/layout :: error(${historyError})}"></div></th:block>
@@ -38,7 +38,7 @@
                         <span class="cs-tag deleted" th:if="${e.deleted()}">Deleted</span>
                         <span class="cs-tag" th:if="${row.first and !e.deleted()}">Current</span>
                         <span class="cs-spacer"></span>
-                        <a class="cs-act" th:if="${!e.deleted() and !row.first and !entries[0].deleted()}"
+                        <a class="cs-act" th:if="${canEdit and !e.deleted() and !row.first and !entries[0].deleted()}"
                            th:href="@{__${configStreamAdminBase}__/services/{name}/edit(name=${service.serviceName()}, key=${key}, value=${e.newValue()}, comment='Reverted to v' + ${e.version()})}">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v4h4"/></svg>Restore</a>

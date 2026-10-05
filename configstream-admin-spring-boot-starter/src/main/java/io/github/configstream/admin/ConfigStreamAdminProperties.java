@@ -1,7 +1,9 @@
 package io.github.configstream.admin;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -36,6 +38,20 @@ public class ConfigStreamAdminProperties {
      * and without a token only from this machine. Turn on only on networks where every caller is trusted.
      */
     private boolean allowUnauthenticatedRegistration;
+
+    /**
+     * Login groups that can see and change every service, e.g. {@code config-admins}. Everyone else sees the services
+     * whose team ({@code configstream.team}) is one of their groups. Only applies when the host application has a login.
+     */
+    private List<String> adminGroups = new ArrayList<>();
+
+    public List<String> getAdminGroups() {
+        return adminGroups;
+    }
+
+    public void setAdminGroups(List<String> adminGroups) {
+        this.adminGroups = adminGroups;
+    }
 
     private final Dashboard dashboard = new Dashboard();
 

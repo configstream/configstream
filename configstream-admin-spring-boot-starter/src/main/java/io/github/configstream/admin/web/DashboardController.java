@@ -24,10 +24,12 @@ class DashboardController {
 
     private final InstanceRegistry registry;
     private final ServiceClient client;
+    private final AdminAccess access;
 
-    DashboardController(InstanceRegistry registry, ServiceClient client) {
+    DashboardController(InstanceRegistry registry, ServiceClient client, AdminAccess access) {
         this.registry = registry;
         this.client = client;
+        this.access = access;
     }
 
     /**
@@ -36,7 +38,10 @@ class DashboardController {
      */
     @GetMapping("/")
     String dashboard(@RequestParam(required = false) String q, Model model) {
-        List<ServiceSummary> all = registry.services();
+        // Only the services this person may see; the others don't exist as far as the page is concerned
+        List<ServiceSummary> all = registry.services().stream()
+                .filter(s -> access.allows(AdminAccess.Action.VIEW, s))
+                .toList();
         String query = q == null ? "" : q.strip();
         String needle = query.toLowerCase(Locale.ROOT);
         // Every card is rendered and the non-matching ones hidden, so filtering as you type can widen the search again
@@ -56,6 +61,7 @@ class DashboardController {
     String service(@PathVariable String serviceName, @RequestParam(required = false) String view, Model model) {
         ServiceSummary service = findService(serviceName);
         model.addAttribute("service", service);
+        addPermissions(service, model);
         try {
             List<PropertyRow> rows = PropertyRow.of(client.currentConfig(serviceName), service);
             // Orphans are clean-up work, on their own tab next to the properties in use
@@ -72,7 +78,9 @@ class DashboardController {
 
     @GetMapping("/services/{serviceName}/history")
     String history(@PathVariable String serviceName, @RequestParam String key, Model model) {
-        model.addAttribute("service", findService(serviceName));
+        ServiceSummary service = findService(serviceName);
+        model.addAttribute("service", service);
+        addPermissions(service, model);
         model.addAttribute("key", key);
         try {
             model.addAttribute("entries", client.history(serviceName, key, HISTORY_LIMIT));
@@ -82,8 +90,17 @@ class DashboardController {
         return "configstream-admin/history";
     }
 
+    /** Whether to offer Edit and Delete; the edit controller checks again before changing anything. */
+    private void addPermissions(ServiceSummary service, Model model) {
+        model.addAttribute("canEdit", access.allows(AdminAccess.Action.EDIT, service));
+        model.addAttribute("canDelete", access.allows(AdminAccess.Action.DELETE, service));
+    }
+
+    /** A service this person may not see is reported as not registered, so its existence isn't revealed either. */
     private ServiceSummary findService(String serviceName) {
-        return registry.service(serviceName).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "No service named '" + serviceName + "' is registered"));
+        return registry.service(serviceName)
+                .filter(s -> access.allows(AdminAccess.Action.VIEW, s))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No service named '" + serviceName + "' is registered"));
     }
 }

@@ -309,6 +309,37 @@ change under it: the "Your name" field disappears, and a submitted name is ignor
 With Spring Security, permit `/api/instances/**` (services authenticate there with tokens, not a login) and exclude it
 from CSRF protection; the dashboard's forms already carry the CSRF token. `samples/demo-admin` shows a minimal setup.
 
+### Who can see and change which service
+
+By default, a signed-in person sees and changes the services whose team (`configstream.team` on the service) is one
+of their login groups. Groups are the person's roles or Spring Security authorities (`team-a` or `ROLE_team-a`); map
+your identity provider's groups to them in the host application. Admin groups see and change everything:
+
+```yaml
+configstream:
+  admin-server:
+    admin-groups: config-admins
+```
+
+A service someone may not see is left off the dashboard, and opening it by address answers "not registered". Every
+change is checked again on the server, not just by hiding buttons. A service without a team is only open to admin
+groups. For other rules, such as testers who may look but not change, define a `ConfigStreamAdminPermissions` bean:
+
+```java
+@Bean
+ConfigStreamAdminPermissions permissions() {
+    TeamPermissions teams = new TeamPermissions(List.of("config-admins"));
+    return new ConfigStreamAdminPermissions() {
+        public boolean canView(AdminUser user, ServiceSummary service) {
+            return teams.canView(user, service) || user.isInGroup("testers");
+        }
+        public boolean canEdit(AdminUser user, ServiceSummary service) {
+            return teams.canEdit(user, service);
+        }
+    };
+}
+```
+
 > **Without a login**, anyone who can open the admin app can edit any registered service, "changed by" is whatever
 > they type, and the header warns "No login: trusted networks only". Run it that way only on a trusted network.
 
@@ -328,7 +359,8 @@ afterwards.
 `samples/` holds two runnable apps for trying it by hand (not published): `demo-admin`, an admin server on port 8090,
 and `demo-service`, an `orders` service on port 8081 whose `GET /demo` shows live values. To use a MongoDB other than
 `localhost:27017` (e.g. Atlas), set the `CONFIGSTREAM_MONGO_URI` environment variable. `demo-admin` has an example
-login with two local test users, `alice` / `alice-local` and `bob` / `bob-local`.
+login with three local test users: `alice` / `alice-local` (team-a, which owns `orders`), `bob` / `bob-local` (team-b,
+who sees no services) and `admin` / `admin-local` (sees everything).
 
 ```bash
 java -jar samples/demo-admin/target/demo-admin-0.1.0-SNAPSHOT.jar

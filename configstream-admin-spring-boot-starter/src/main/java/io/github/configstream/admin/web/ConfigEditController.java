@@ -42,12 +42,14 @@ class ConfigEditController {
     private final InstanceRegistry registry;
     private final ServiceClient client;
     private final String basePath;
+    private final AdminAccess access;
 
     /** {@code basePath} is the dashboard's path prefix ({@code ""} at the root), used for redirects. */
-    ConfigEditController(InstanceRegistry registry, ServiceClient client, String basePath) {
+    ConfigEditController(InstanceRegistry registry, ServiceClient client, String basePath, AdminAccess access) {
         this.registry = registry;
         this.client = client;
         this.basePath = basePath;
+        this.access = access;
     }
 
     /** The edit form for an existing property. Pre-filled from the parameters, e.g. by the history page's "Restore" links. */
@@ -55,7 +57,7 @@ class ConfigEditController {
     String edit(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
             Principal user) {
         ChangeForm form = asUser(submitted, user);
-        ServiceSummary service = findService(serviceName);
+        ServiceSummary service = findService(serviceName, AdminAccess.Action.EDIT);
         if (ChangeForm.isBlank(form.key())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "key is required: properties are added in the service's configstream.yml, not here");
@@ -72,7 +74,7 @@ class ConfigEditController {
     String review(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
             Principal user) {
         ChangeForm form = asUser(submitted, user);
-        ServiceSummary service = findService(serviceName);
+        ServiceSummary service = findService(serviceName, AdminAccess.Action.EDIT);
         if (!validate(form, model)) {
             // Redraw the input that matches the property's type, highlighted
             return editPage(service, form, form.key() == null ? null : currentOrNull(serviceName, form.key()), model);
@@ -111,7 +113,7 @@ class ConfigEditController {
     String update(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
             RedirectAttributes redirect, Principal user) {
         ChangeForm form = asUser(submitted, user);
-        ServiceSummary service = findService(serviceName);
+        ServiceSummary service = findService(serviceName, AdminAccess.Action.EDIT);
         if (!validate(form, model)) {
             return editPage(service, form, null, model);
         }
@@ -138,7 +140,7 @@ class ConfigEditController {
     String confirmDelete(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
             Principal user) {
         ChangeForm form = asUser(submitted, user);
-        ServiceSummary service = findService(serviceName);
+        ServiceSummary service = findService(serviceName, AdminAccess.Action.DELETE);
         if (ChangeForm.isBlank(form.key())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "key is required");
         }
@@ -151,7 +153,7 @@ class ConfigEditController {
     String delete(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
             RedirectAttributes redirect, Principal user) {
         ChangeForm form = asUser(submitted, user);
-        ServiceSummary service = findService(serviceName);
+        ServiceSummary service = findService(serviceName, AdminAccess.Action.DELETE);
         List<String> errors = form.validateDeletion();
         if (!errors.isEmpty()) {
             model.addAttribute("errors", errors);
@@ -269,9 +271,21 @@ class ConfigEditController {
         }
     }
 
-    private ServiceSummary findService(String serviceName) {
-        return registry.service(serviceName).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "No service named '" + serviceName + "' is registered"));
+    /**
+     * The service, if this person may do {@code action} with it: a service they can't see is reported as not
+     * registered, and one they can see but not change gets 403.
+     */
+    private ServiceSummary findService(String serviceName, AdminAccess.Action action) {
+        ServiceSummary service = registry.service(serviceName)
+                .filter(s -> access.allows(AdminAccess.Action.VIEW, s))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No service named '" + serviceName + "' is registered"));
+        if (!access.allows(action, service)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have permission to "
+                    + (action == AdminAccess.Action.DELETE ? "delete properties of '" : "change the config of '")
+                    + serviceName + "'.");
+        }
+        return service;
     }
 
     /**

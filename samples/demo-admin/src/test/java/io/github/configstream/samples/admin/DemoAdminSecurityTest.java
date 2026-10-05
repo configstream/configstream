@@ -34,7 +34,7 @@ class DemoAdminSecurityTest {
 
     @Test
     void theHeaderShowsWhoIsSignedIn() throws Exception {
-        mvc.perform(get("/").with(user("alice")))
+        mvc.perform(get("/").with(user("alice").roles("team-a")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(
                         containsString("<span>alice</span>"),
@@ -45,9 +45,22 @@ class DemoAdminSecurityTest {
     @Test
     void signingOutTakesOneClick() throws Exception {
         // The header's Sign out button posts with the CSRF token, so there's no confirmation page
-        mvc.perform(post("/logout").with(user("alice")).with(csrf()))
+        mvc.perform(post("/logout").with(user("alice").roles("team-a")).with(csrf()))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/login?logout"));
+    }
+
+    @Test
+    void eachPersonSeesTheirTeamsServices() throws Exception {
+        register("orders", "o-3").andExpect(status().isCreated());   // team-a
+
+        mvc.perform(get("/").with(user("alice").roles("team-a")))
+                .andExpect(content().string(containsString("href=\"/services/orders\"")));
+        mvc.perform(get("/").with(user("bob").roles("team-b")))
+                .andExpect(content().string(not(containsString("href=\"/services/orders\""))));
+        mvc.perform(get("/services/orders").with(user("bob").roles("team-b"))).andExpect(status().isNotFound());
+        mvc.perform(get("/").with(user("admin").roles("config-admins")))
+                .andExpect(content().string(containsString("href=\"/services/orders\"")));
     }
 
     @Test
@@ -60,7 +73,7 @@ class DemoAdminSecurityTest {
         register("orders", "o-2").andExpect(status().isCreated());
 
         // The service isn't really running, so the page also shows that it can't be reached
-        mvc.perform(get("/services/orders/edit").param("key", "limits.max").with(user("alice")))
+        mvc.perform(get("/services/orders/edit").param("key", "limits.max").with(user("alice").roles("team-a")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(
                         containsString("name=\"_csrf\""),
@@ -70,7 +83,7 @@ class DemoAdminSecurityTest {
     private org.springframework.test.web.servlet.ResultActions register(String service, String instanceId)
             throws Exception {
         return mvc.perform(post("/api/instances").contentType(MediaType.APPLICATION_JSON).content(
-                "{\"serviceName\":\"%s\",\"instanceId\":\"%s\",\"host\":\"localhost\",\"port\":1}"
+                "{\"serviceName\":\"%s\",\"instanceId\":\"%s\",\"host\":\"localhost\",\"port\":1,\"team\":\"team-a\"}"
                         .formatted(service, instanceId)));
     }
 }

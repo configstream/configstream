@@ -48,7 +48,7 @@ class DashboardPathTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(
                         containsString("href=\"/admin/services/orders\""),
-                        containsString("href=\"/configstream-admin/admin.css\""))));
+                        containsString("href=\"/configstream-admin/admin.css?v="))));
         mvc.perform(get("/admin/services/orders"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(

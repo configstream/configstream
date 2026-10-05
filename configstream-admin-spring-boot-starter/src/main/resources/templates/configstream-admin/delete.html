@@ -45,7 +45,7 @@
                 </th:block>
             </dl>
             <input type="hidden" name="key" th:value="${form.key()}">
-            <label class="cs-field">Your name
+            <label class="cs-field" th:unless="${configStreamAdminUser}">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
             </label>
             <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>

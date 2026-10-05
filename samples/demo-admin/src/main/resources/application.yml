@@ -12,3 +12,5 @@ configstream:
   admin-server:
     # Must match configstream.internal.secret in demo-service. Local testing only: never reuse it.
     default-service-secret: local-dev-secret-123456
+    dashboard:
+      logout-path: /logout      # Spring Security's sign-out page (see SecurityConfig)

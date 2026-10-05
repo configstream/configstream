@@ -4,9 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${title} + ' · configstream admin'">configstream admin</title>
-    <link rel="stylesheet" th:href="@{/configstream-admin/admin.css}">
+    <!--/* v= changes whenever the files do, so browsers never keep using an old copy after an upgrade */-->
+    <link rel="stylesheet" th:href="@{/configstream-admin/admin.css(v=${configStreamAdminAssets})}">
     <link rel="icon" th:href="@{/configstream-admin/logo.svg}" type="image/svg+xml">
-    <script th:src="@{/configstream-admin/admin.js}" defer></script>
+    <script th:src="@{/configstream-admin/admin.js(v=${configStreamAdminAssets})}" defer></script>
 </head>
 <body>
 <header th:fragment="header" class="cs-header">
@@ -20,7 +21,20 @@
         <span class="cs-brand-sub">admin</span>
     </a>
     <div class="cs-spacer"></div>
-    <span class="cs-nologin" title="Login and access control arrive in a later release">
+    <div class="cs-user" th:if="${configStreamAdminUser}">
+        <span class="cs-user-name">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+            <span th:text="${configStreamAdminUser}">alice</span>
+        </span>
+        <!--/* A form, not a link: signing out is a POST (with the CSRF token, added automatically under Spring
+             Security), so it happens in one click without a confirmation page */-->
+        <form class="cs-signout" th:if="${configStreamAdminLogout}" method="post" th:action="@{${configStreamAdminLogout}}">
+            <button type="submit">Sign out</button>
+        </form>
+    </div>
+    <span class="cs-nologin" th:unless="${configStreamAdminUser}"
+          title="The application hosting this admin server has no login: anyone who can open it can change config">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
         <span>No login: trusted networks only</span>

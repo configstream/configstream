@@ -9,6 +9,7 @@ import io.github.configstream.api.ConfigHistoryEntry;
 import io.github.configstream.api.InvalidConfigValueException;
 import io.github.configstream.api.PropertyType;
 import jakarta.servlet.http.HttpSession;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,8 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
  * instance declares), is confirmed on its own page. Writes go through the service's own internal endpoints, never to
  * its database directly, and the service checks every rule again.
  *
- * <p>There is no login yet, so "changed by" is whatever the user types; it is remembered in the session
- * to save retyping. Phase 6 replaces it with the authenticated user.
+ * <p>"Changed by" is the signed-in user when the host application has a login. Without one, it is whatever the
+ * person types, remembered in the session to save retyping.
  */
 @Controller
 @RequestMapping("/services/{serviceName}")
@@ -51,7 +52,9 @@ class ConfigEditController {
 
     /** The edit form for an existing property. Pre-filled from the parameters, e.g. by the history page's "Restore" links. */
     @GetMapping("/edit")
-    String edit(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model) {
+    String edit(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
+            Principal user) {
+        ChangeForm form = asUser(submitted, user);
         ServiceSummary service = findService(serviceName);
         if (ChangeForm.isBlank(form.key())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -66,7 +69,9 @@ class ConfigEditController {
     }
 
     @PostMapping("/edit/review")
-    String review(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model) {
+    String review(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
+            Principal user) {
+        ChangeForm form = asUser(submitted, user);
         ServiceSummary service = findService(serviceName);
         if (!validate(form, model)) {
             // Redraw the input that matches the property's type, highlighted
@@ -103,8 +108,9 @@ class ConfigEditController {
     }
 
     @PostMapping("/update")
-    String update(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model,
-            RedirectAttributes redirect) {
+    String update(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
+            RedirectAttributes redirect, Principal user) {
+        ChangeForm form = asUser(submitted, user);
         ServiceSummary service = findService(serviceName);
         if (!validate(form, model)) {
             return editPage(service, form, null, model);
@@ -129,7 +135,9 @@ class ConfigEditController {
     }
 
     @GetMapping("/delete")
-    String confirmDelete(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model) {
+    String confirmDelete(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
+            Principal user) {
+        ChangeForm form = asUser(submitted, user);
         ServiceSummary service = findService(serviceName);
         if (ChangeForm.isBlank(form.key())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "key is required");
@@ -140,8 +148,9 @@ class ConfigEditController {
     }
 
     @PostMapping("/delete")
-    String delete(@PathVariable String serviceName, ChangeForm form, HttpSession session, Model model,
-            RedirectAttributes redirect) {
+    String delete(@PathVariable String serviceName, ChangeForm submitted, HttpSession session, Model model,
+            RedirectAttributes redirect, Principal user) {
+        ChangeForm form = asUser(submitted, user);
         ServiceSummary service = findService(serviceName);
         List<String> errors = form.validateDeletion();
         if (!errors.isEmpty()) {
@@ -265,6 +274,14 @@ class ConfigEditController {
                 HttpStatus.NOT_FOUND, "No service named '" + serviceName + "' is registered"));
     }
 
+    /**
+     * With a login, a change is always recorded under the signed-in user: a typed or submitted name is ignored, so
+     * the history can be trusted.
+     */
+    private static ChangeForm asUser(ChangeForm form, Principal user) {
+        return user == null ? form : form.withChangedBy(user.getName());
+    }
+
     private static String rememberedChangedBy(HttpSession session) {
         return session.getAttribute(CHANGED_BY_SESSION_KEY) instanceof String s ? s : null;
     }
@@ -304,6 +321,10 @@ class ConfigEditController {
 
         ChangeForm withType(String newType) {
             return new ChangeForm(key, value, newType, changedBy, comment);
+        }
+
+        ChangeForm withChangedBy(String name) {
+            return new ChangeForm(key, value, type, name, comment);
         }
 
         ChangeForm withChangedByDefault(String remembered) {

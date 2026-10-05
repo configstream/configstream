@@ -67,7 +67,8 @@
             </label>
             <p class="cs-field-error" id="value-error" th:if="${valueError}" th:text="${valueError}">'abc' is not a valid int.</p>
 
-            <label class="cs-field">Your name
+            <!--/* With a login, the change is recorded under the signed-in user and the name can't be typed */-->
+            <label class="cs-field" th:unless="${configStreamAdminUser}">Your name
                 <input name="changedBy" th:value="${form.changedBy()}" required autocomplete="name">
             </label>
             <label class="cs-field"><span>Comment<span class="hint">Optional, recorded in the history</span></span>

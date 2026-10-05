@@ -3,7 +3,7 @@
 <head th:fragment="head(title)">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${title} + ' · configstream admin'">configstream admin</title>
+    <title th:text="${title} + ' · configstream console'">configstream console</title>
     <!--/* v= changes whenever the files do, so browsers never keep using an old copy after an upgrade */-->
     <link rel="stylesheet" th:href="@{/configstream-admin/admin.css(v=${configStreamAdminAssets})}">
     <link rel="icon" th:href="@{/configstream-admin/logo.svg}" type="image/svg+xml">
@@ -18,7 +18,7 @@
                   stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
         <span class="cs-brand-name">configstream</span>
-        <span class="cs-brand-sub">admin</span>
+        <span class="cs-brand-sub">console</span>
     </a>
     <div class="cs-spacer"></div>
     <div class="cs-user" th:if="${configStreamAdminUser}">

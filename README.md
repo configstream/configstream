@@ -1,8 +1,13 @@
 # configstream
 
+[![CI](https://github.com/configstream/configstream/actions/workflows/ci.yml/badge.svg)](https://github.com/configstream/configstream/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.configstream/configstream-spring-boot-starter)](https://central.sonatype.com/artifact/io.github.configstream/configstream-spring-boot-starter)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://www.apache.org/licenses/LICENSE-2.0)
+
 > Push-based, restart-free feature flags and configuration for Spring Boot — using the database you already run.
 
-**Status:** 🚧 Early development (pre-0.1.0). Not ready for production use.
+**Status:** 0.1.0, the first public release. It is tested and usable, but its APIs and settings may still change
+before 1.0; read the release notes when upgrading.
 
 ## What it does
 
@@ -18,6 +23,62 @@ config propagation without operating a separate config server.
 
 **Not for:** secrets/credentials (use Vault or your cloud secrets manager), or teams needing percentage rollouts /
 A/B experimentation (see Unleash or LaunchDarkly).
+
+## Quick start
+
+Requirements: Java 17+, Spring Boot 3.x, and a MongoDB **replica set** (MongoDB Atlas always is one; for a local
+single-node replica set, `docker compose up -d` in this repository).
+
+**1. Add the starter and the annotation processor**
+
+```xml
+<dependency>
+    <groupId>io.github.configstream</groupId>
+    <artifactId>configstream-spring-boot-starter</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+plus `configstream-processor` 0.1.0 as an annotation processor (see
+[Read them through generated constants](#read-them-through-generated-constants)).
+
+**2. Declare your properties** in `src/main/resources/configstream.yml`:
+
+```yaml
+properties:
+  - key: feature.funds.enabled
+    type: boolean
+    initialValue: false
+```
+
+**3. Read them**, with `@ConfigStreamManifest` on your application class:
+
+```java
+boolean enabled = config.get(Feature.FUNDS_ENABLED);   // ConfigService config, injected
+```
+
+On startup the property is created in your MongoDB. Change it in the [admin server](#admin-server) (or directly in
+the database) and every running instance sees the new value within about a second, without a restart.
+
+## How it works
+
+```mermaid
+flowchart LR
+    person([Person]) -->|edits a value| admin[Admin server]
+    admin -->|asks one instance to write it| orders1
+    subgraph orders [orders service]
+        orders1[instance 1]
+        orders2[instance 2]
+    end
+    orders1 -->|writes, with history| db[(MongoDB<br/>orders_config)]
+    db -->|change stream| orders1
+    db -->|change stream| orders2
+```
+
+Each service keeps its properties in its own MongoDB collection and holds them in memory. When a value changes, MongoDB
+pushes the change to every instance through a change stream, so reads never touch the database and every instance
+updates within about a second. The admin server is optional: it lists services, shows values and history, and sends
+changes to a service, which writes them with its own database credentials.
 
 ## Modules
 
@@ -144,7 +205,7 @@ class Checkout {
 ```
 
 Stored as one document per property: `{ "_id": "feature.funds.limit", "type": "int", "value": 3, "version": 1 }`.
-configstream uses its own connection and does not replace your application's `MongoClient` bean.
+configstream shares your application's `MongoClient` and doesn't change its settings.
 
 ### Connecting to the admin server (optional)
 
@@ -174,8 +235,8 @@ configstream:
     `{"feature.funds.limit": {"type": "int", "value": "3"}}`.
 - **`admin.url`** makes the instance register with the admin app on startup, send heartbeats, and deregister on
   shutdown. If the admin app is down or unreachable the service still starts and keeps retrying in the background.
-- **History:** every change made through configstream is appended to `<collection>_history` (key, version, old and
-  new value, who, when, comment) in the same transaction as the change itself, starting with v1 "Created from
+- **History:** every change made through configstream is appended to the history collection (`orders_config_history`
+  for `orders`: key, version, old and new value, who, when, comment) in the same transaction as the change itself, starting with v1 "Created from
   configstream.yml". To **roll back**, write the old value again, e.g. with `"comment": "Reverted to v3"`; history is
   never rewritten. Changes made directly in the database still reach every cache but are not recorded.
 - **Deletes** remove the property but keep its history. If a version of the service that declares it starts again
@@ -219,6 +280,7 @@ Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer
 <dependency>
     <groupId>io.github.configstream</groupId>
     <artifactId>configstream-admin-spring-boot-starter</artifactId>
+    <version>0.1.0</version>
 </dependency>
 ```
 

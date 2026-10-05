@@ -304,7 +304,7 @@ a network you fully trust, set `configstream.admin-server.allow-unauthenticated-
 Login for people is up to the application hosting the admin server, typically Spring Security with your company's
 identity provider. Once someone is signed in, the admin server shows their name in the header and records every
 change under it: the "Your name" field disappears, and a submitted name is ignored, so the history can be trusted. Set
-`configstream.admin-server.dashboard.logout-path` (e.g. `/logout`) to add a "Sign out" link.
+`configstream.admin-server.dashboard.logout-path` (e.g. `/logout`) to add a "Sign out" button, which posts there.
 
 With Spring Security, permit `/api/instances/**` (services authenticate there with tokens, not a login) and exclude it
 from CSRF protection; the dashboard's forms already carry the CSRF token. `samples/demo-admin` shows a minimal setup.

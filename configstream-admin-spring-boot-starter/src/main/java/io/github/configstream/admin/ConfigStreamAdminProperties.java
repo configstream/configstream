@@ -105,8 +105,8 @@ public class ConfigStreamAdminProperties {
         private String path = "/";
 
         /**
-         * Where the header's "Sign out" link goes, e.g. {@code /logout} with Spring Security's default setup. No link
-         * unless set. The signed-in user's name is shown whenever the host application has a login.
+         * Where the header's "Sign out" button posts to, e.g. {@code /logout} with Spring Security's default setup. No
+         * button unless set. The signed-in user's name is shown whenever the host application has a login.
          */
         private String logoutPath;
 

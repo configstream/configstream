@@ -15,10 +15,18 @@ class DashboardModel {
 
     private final String basePath;
     private final String logoutPath;
+    private final String assetsVersion;
 
-    DashboardModel(String basePath, String logoutPath) {
+    DashboardModel(String basePath, String logoutPath, String assetsVersion) {
         this.basePath = basePath;
         this.logoutPath = logoutPath;
+        this.assetsVersion = assetsVersion;
+    }
+
+    /** Changes whenever the dashboard's CSS or scripts do; added to their URLs so browsers fetch new copies. */
+    @ModelAttribute("configStreamAdminAssets")
+    String assetsVersion() {
+        return assetsVersion;
     }
 
     @ModelAttribute("configStreamAdminBase")

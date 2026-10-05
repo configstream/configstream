@@ -3,10 +3,12 @@ package io.github.configstream.samples.admin;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -36,8 +38,16 @@ class DemoAdminSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(
                         containsString("<span>alice</span>"),
-                        containsString("href=\"/logout\""),
+                        containsString("action=\"/logout\""),
                         not(containsString("No login: trusted networks only")))));
+    }
+
+    @Test
+    void signingOutTakesOneClick() throws Exception {
+        // The header's Sign out button posts with the CSRF token, so there's no confirmation page
+        mvc.perform(post("/logout").with(user("alice")).with(csrf()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login?logout"));
     }
 
     @Test

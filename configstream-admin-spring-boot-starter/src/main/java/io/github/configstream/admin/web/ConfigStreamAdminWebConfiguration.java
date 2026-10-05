@@ -3,7 +3,12 @@ package io.github.configstream.admin.web;
 import io.github.configstream.admin.ConfigStreamAdminProperties;
 import io.github.configstream.admin.client.ServiceClient;
 import io.github.configstream.admin.registry.InstanceRegistry;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.time.Clock;
+import java.util.zip.CRC32;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.HandlerTypePredicate;
@@ -45,7 +50,20 @@ public class ConfigStreamAdminWebConfiguration implements WebMvcConfigurer {
 
     @Bean
     DashboardModel configStreamAdminDashboardModel() {
-        return new DashboardModel(basePath, logoutPath);
+        return new DashboardModel(basePath, logoutPath, assetsVersion());
+    }
+
+    /** A checksum of the dashboard's CSS and scripts, so their URLs change exactly when their content does. */
+    static String assetsVersion() {
+        CRC32 checksum = new CRC32();
+        for (String file : new String[] {"admin.css", "admin.js"}) {
+            try (InputStream in = new ClassPathResource("static/configstream-admin/" + file).getInputStream()) {
+                checksum.update(in.readAllBytes());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not read the dashboard's " + file, e);
+            }
+        }
+        return Long.toHexString(checksum.getValue());
     }
 
     @Override

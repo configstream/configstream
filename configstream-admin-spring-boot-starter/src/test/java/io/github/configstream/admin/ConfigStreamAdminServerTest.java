@@ -332,6 +332,33 @@ class ConfigStreamAdminServerTest {
     }
 
     @Test
+    void withALoginTheHeaderShowsTheUserInsteadOfTheWarning() throws Exception {
+        mvc.perform(get("/").principal(() -> "alice"))
+                .andExpect(content().string(allOf(
+                        containsString("<span>alice</span>"),
+                        not(containsString("No login: trusted networks only")))));
+        mvc.perform(get("/"))
+                .andExpect(content().string(containsString("No login: trusted networks only")));
+    }
+
+    @Test
+    void withALoginChangesAreRecordedUnderTheSignedInUser() throws Exception {
+        register("orders", "o-1", 8080);
+        when(serviceClient.currentConfig("orders")).thenReturn(config());
+        when(serviceClient.update("orders", "limits.max", "75", "int", "alice", null))
+                .thenReturn(Optional.of(entry("limits.max", 3, "50", "75")));
+
+        // No name to type
+        mvc.perform(get("/services/orders/edit").param("key", "limits.max").principal(() -> "alice"))
+                .andExpect(content().string(not(containsString("name=\"changedBy\" value"))));
+        // A submitted name is ignored: the history must show who really made the change
+        mvc.perform(post("/services/orders/update").principal(() -> "alice")
+                        .param("key", "limits.max").param("value", "75").param("type", "int").param("changedBy", "mallory"))
+                .andExpect(redirectedUrl("/services/orders"));
+        verify(serviceClient).update("orders", "limits.max", "75", "int", "alice", null);
+    }
+
+    @Test
     void failedUpdateIsShownWithTheFormStillFilledIn() throws Exception {
         register("orders", "o-1", 8080);
         when(serviceClient.update(any(), any(), any(), any(), any(), any()))

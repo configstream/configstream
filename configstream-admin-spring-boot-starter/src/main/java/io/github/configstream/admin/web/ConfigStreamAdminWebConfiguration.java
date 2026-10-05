@@ -20,9 +20,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class ConfigStreamAdminWebConfiguration implements WebMvcConfigurer {
 
     private final String basePath;
+    private final String logoutPath;
 
     ConfigStreamAdminWebConfiguration(ConfigStreamAdminProperties properties) {
         this.basePath = properties.getDashboard().basePath();
+        this.logoutPath = properties.getDashboard().getLogoutPath();
     }
 
     /** Used by the templates as {@code ${@configStreamAdminTime.ago(instant)}}. */
@@ -43,7 +45,7 @@ public class ConfigStreamAdminWebConfiguration implements WebMvcConfigurer {
 
     @Bean
     DashboardModel configStreamAdminDashboardModel() {
-        return new DashboardModel(basePath);
+        return new DashboardModel(basePath, logoutPath);
     }
 
     @Override

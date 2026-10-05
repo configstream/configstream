@@ -299,9 +299,18 @@ the service's `spring.application.name`, so a token for `orders` can't register,
 configstream on a laptop needs no setup, and a forgotten setting never leaves a real server open. To accept anyone on
 a network you fully trust, set `configstream.admin-server.allow-unauthenticated-registration: true`.
 
-> **People's login is up to your application.** Anyone who can open the admin app can edit any registered service, and
-> "changed by" is whatever they type. Add login to the application that hosts the admin server (e.g. Spring Security),
-> or run it only on a trusted network.
+### Signing in people
+
+Login for people is up to the application hosting the admin server, typically Spring Security with your company's
+identity provider. Once someone is signed in, the admin server shows their name in the header and records every
+change under it: the "Your name" field disappears, and a submitted name is ignored, so the history can be trusted. Set
+`configstream.admin-server.dashboard.logout-path` (e.g. `/logout`) to add a "Sign out" link.
+
+With Spring Security, permit `/api/instances/**` (services authenticate there with tokens, not a login) and exclude it
+from CSRF protection; the dashboard's forms already carry the CSRF token. `samples/demo-admin` shows a minimal setup.
+
+> **Without a login**, anyone who can open the admin app can edit any registered service, "changed by" is whatever
+> they type, and the header warns "No login: trusted networks only". Run it that way only on a trusted network.
 
 ## Local development
 
@@ -318,7 +327,8 @@ afterwards.
 
 `samples/` holds two runnable apps for trying it by hand (not published): `demo-admin`, an admin server on port 8090,
 and `demo-service`, an `orders` service on port 8081 whose `GET /demo` shows live values. To use a MongoDB other than
-`localhost:27017` (e.g. Atlas), set the `CONFIGSTREAM_MONGO_URI` environment variable.
+`localhost:27017` (e.g. Atlas), set the `CONFIGSTREAM_MONGO_URI` environment variable. `demo-admin` has an example
+login with two local test users, `alice` / `alice-local` and `bob` / `bob-local`.
 
 ```bash
 java -jar samples/demo-admin/target/demo-admin-0.1.0-SNAPSHOT.jar

@@ -83,6 +83,10 @@ p { margin: 0; }
 .cs-brand-sub { font-size: 13px; opacity: 0.6; }
 .cs-spacer { flex-grow: 1; }
 
+.cs-user { display: flex; align-items: center; gap: 8px; color: var(--header-text); font-size: 13px; }
+.cs-user a { color: var(--header-text); opacity: 0.7; padding-left: 8px; border-left: 1px solid rgba(255, 255, 255, 0.25); }
+.cs-user a:hover { opacity: 1; }
+
 .cs-nologin {
     display: flex;
     align-items: center;

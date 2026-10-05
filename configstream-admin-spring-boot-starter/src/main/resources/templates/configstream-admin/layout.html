@@ -20,7 +20,14 @@
         <span class="cs-brand-sub">admin</span>
     </a>
     <div class="cs-spacer"></div>
-    <span class="cs-nologin" title="Login and access control arrive in a later release">
+    <span class="cs-user" th:if="${configStreamAdminUser}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+        <span th:text="${configStreamAdminUser}">alice</span>
+        <a th:if="${configStreamAdminLogout}" th:href="@{${configStreamAdminLogout}}">Sign out</a>
+    </span>
+    <span class="cs-nologin" th:unless="${configStreamAdminUser}"
+          title="The application hosting this admin server has no login: anyone who can open it can change config">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
         <span>No login: trusted networks only</span>

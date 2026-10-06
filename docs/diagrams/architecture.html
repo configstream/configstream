@@ -1,0 +1,96 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#fff}
+  svg{display:block;font-family:"Segoe UI",Arial,sans-serif}
+  .t{fill:#14201f}.m{fill:#5b6b69}.a{fill:#0a6f6a}
+</style></head><body>
+<svg width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#14201f"/></marker>
+    <marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0a6f6a"/></marker>
+  </defs>
+  <rect width="1600" height="900" fill="#fbfdfc"/>
+  <rect width="1600" height="10" fill="#0a6f6a"/>
+
+  <!-- Title -->
+  <text x="70" y="98" font-size="46" font-weight="700" class="t">configstream <tspan class="m" font-weight="400">· live config for Spring Boot</tspan></text>
+  <text x="70" y="148" font-size="26" class="m">Change a value once. Every running instance has it in about a second.</text>
+
+  <!-- Person -->
+  <circle cx="120" cy="452" r="34" fill="none" stroke="#14201f" stroke-width="4"/>
+  <path d="M62,540 C70,500 95,486 120,486 C145,486 170,500 178,540" fill="none" stroke="#14201f" stroke-width="4" stroke-linecap="round"/>
+  <text x="120" y="580" font-size="24" font-weight="600" text-anchor="middle" class="t">alice</text>
+  <text x="120" y="608" font-size="19" text-anchor="middle" class="m">edits a value</text>
+
+  <!-- 1: person -> admin -->
+  <line x1="190" y1="490" x2="242" y2="490" stroke="#14201f" stroke-width="3.5" marker-end="url(#dark)"/>
+  <circle cx="216" cy="456" r="16" fill="#0a6f6a"/><text x="216" y="463" font-size="19" font-weight="700" text-anchor="middle" fill="#fff">1</text>
+
+  <!-- Admin server -->
+  <rect x="250" y="390" width="300" height="200" rx="16" fill="#fff" stroke="#14201f" stroke-width="3"/>
+  <text x="400" y="440" font-size="27" font-weight="700" text-anchor="middle" class="t">Admin server</text>
+  <text x="400" y="474" font-size="19" text-anchor="middle" class="m">your own Spring Boot app</text>
+  <text x="400" y="518" font-size="19" text-anchor="middle" class="t">review before apply</text>
+  <text x="400" y="546" font-size="19" text-anchor="middle" class="t">history · restore</text>
+  <text x="400" y="574" font-size="19" text-anchor="middle" class="t">team permissions</text>
+
+  <!-- 2: admin -> instance 1 -->
+  <circle cx="622" cy="392" r="16" fill="#0a6f6a"/><text x="622" y="399" font-size="19" font-weight="700" text-anchor="middle" fill="#fff">2</text>
+  <text x="566" y="300" font-size="18" class="t">sends the change</text>
+  <text x="566" y="324" font-size="18" class="m">with an OAuth2 token</text>
+
+  <!-- orders service group -->
+  <rect x="770" y="225" width="330" height="520" rx="20" fill="#e2f1ef" stroke="#0a6f6a" stroke-width="2.5" stroke-dasharray="8 6"/>
+  <text x="935" y="262" font-size="22" font-weight="700" text-anchor="middle" class="a">orders service</text>
+  <g font-size="19">
+    <rect x="795" y="285" width="280" height="120" rx="12" fill="#fff" stroke="#14201f" stroke-width="2.5"/>
+    <text x="815" y="320" font-size="23" font-weight="700" class="t">instance 1</text>
+    <text x="815" y="350" class="m">values held in memory</text>
+    <text x="815" y="384" class="a" font-family="Consolas,monospace" font-weight="700">limits.max = 150</text>
+
+    <rect x="795" y="430" width="280" height="120" rx="12" fill="#fff" stroke="#14201f" stroke-width="2.5"/>
+    <text x="815" y="465" font-size="23" font-weight="700" class="t">instance 2</text>
+    <text x="815" y="495" class="m">values held in memory</text>
+    <text x="815" y="529" class="a" font-family="Consolas,monospace" font-weight="700">limits.max = 150</text>
+
+    <rect x="795" y="575" width="280" height="120" rx="12" fill="#fff" stroke="#14201f" stroke-width="2.5"/>
+    <text x="815" y="610" font-size="23" font-weight="700" class="t">instance 3</text>
+    <text x="815" y="640" class="m">values held in memory</text>
+    <text x="815" y="674" class="a" font-family="Consolas,monospace" font-weight="700">limits.max = 150</text>
+  </g>
+  <text x="935" y="728" font-size="17" text-anchor="middle" class="m">reads never touch the database</text>
+
+  <path d="M550,440 C640,440 660,345 793,345" fill="none" stroke="#14201f" stroke-width="3.5" marker-end="url(#dark)"/>
+  <!-- 3: instance 1 -> MongoDB (write) -->
+  <path d="M1075,310 H1340 V378" fill="none" stroke="#14201f" stroke-width="3.5" marker-end="url(#dark)"/>
+  <circle cx="1205" cy="310" r="16" fill="#0a6f6a"/><text x="1205" y="317" font-size="19" font-weight="700" text-anchor="middle" fill="#fff">3</text>
+  <text x="1232" y="268" font-size="18" class="t">writes it with its own</text>
+  <text x="1232" y="292" font-size="18" class="t">credentials, plus history</text>
+
+  <!-- MongoDB cylinder -->
+  <path d="M1220,400 V560 A120,26 0 0 0 1460,560 V400" fill="#fff" stroke="#14201f" stroke-width="3"/>
+  <ellipse cx="1340" cy="400" rx="120" ry="26" fill="#e2f1ef" stroke="#14201f" stroke-width="3"/>
+  <text x="1340" y="474" font-size="27" font-weight="700" text-anchor="middle" class="t">MongoDB</text>
+  <text x="1340" y="506" font-size="19" text-anchor="middle" class="m" font-family="Consolas,monospace">orders_config</text>
+  <text x="1340" y="534" font-size="19" text-anchor="middle" class="m" font-family="Consolas,monospace">orders_config_history</text>
+
+  <!-- 4: change stream -> every instance -->
+  <g fill="none" stroke="#0a6f6a" stroke-width="3.5" stroke-dasharray="10 7">
+    <path d="M1218,470 C1150,470 1140,372 1081,372" marker-end="url(#teal)"/>
+    <path d="M1218,490 L1081,490" marker-end="url(#teal)"/>
+    <path d="M1218,510 C1150,510 1140,635 1081,635" marker-end="url(#teal)"/>
+  </g>
+  <circle cx="1340" cy="628" r="16" fill="#0a6f6a"/><text x="1340" y="635" font-size="19" font-weight="700" text-anchor="middle" fill="#fff">4</text>
+  <text x="1340" y="672" font-size="20" font-weight="700" text-anchor="middle" class="a">change stream pushes it</text>
+  <text x="1340" y="698" font-size="20" font-weight="700" text-anchor="middle" class="a">to every instance, ~1 s</text>
+
+  <!-- Footer chips -->
+  <g font-size="20" font-weight="600">
+    <rect x="70" y="790" width="170" height="46" rx="23" fill="#e2f1ef"/><text x="155" y="820" text-anchor="middle" class="a">No restart</text>
+    <rect x="256" y="790" width="170" height="46" rx="23" fill="#e2f1ef"/><text x="341" y="820" text-anchor="middle" class="a">No polling</text>
+    <rect x="442" y="790" width="240" height="46" rx="23" fill="#e2f1ef"/><text x="562" y="820" text-anchor="middle" class="a">No message broker</text>
+    <rect x="698" y="790" width="350" height="46" rx="23" fill="#e2f1ef"/><text x="873" y="820" text-anchor="middle" class="a">Admin never gets DB credentials</text>
+  </g>
+  <text x="1530" y="820" font-size="20" text-anchor="end" class="m">github.com/configstream/configstream</text>
+</svg>
+</body></html>

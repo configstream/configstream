@@ -24,13 +24,34 @@ public class ConfigStreamAdminProperties {
     private Duration requestTimeout = Duration.ofSeconds(5);
 
     /**
+     * Registration ID of a {@code spring.security.oauth2.client.registration.*} entry (grant type
+     * {@code client_credentials}) whose tokens identify this admin server to services, which accept it through their
+     * {@code configstream.internal.admin-principal}. Tokens are fetched, cached and renewed automatically. Needs
+     * {@code spring-boot-starter-oauth2-client}. Without it, services are called with their shared secret.
+     */
+    private String oauth2Client;
+
+    /**
      * Shared secret per service name, matching that service's {@code configstream.internal.secret}.
-     * Needed to read (and later change) its config.
+     * Needed to read and change its config, unless {@code oauth2-client} is set.
      */
     private Map<String, String> serviceSecrets = new HashMap<>();
 
     /** Secret used for services not listed in {@code service-secrets}. */
     private String defaultServiceSecret;
+
+    public String getOauth2Client() {
+        return oauth2Client;
+    }
+
+    public void setOauth2Client(String oauth2Client) {
+        this.oauth2Client = oauth2Client;
+    }
+
+    /** True if services are called with this admin server's OAuth2 tokens. */
+    public boolean usesTokens() {
+        return oauth2Client != null && !oauth2Client.isBlank();
+    }
 
     /**
      * Accept registrations from callers that aren't authenticated, from any address. Off by default: then services

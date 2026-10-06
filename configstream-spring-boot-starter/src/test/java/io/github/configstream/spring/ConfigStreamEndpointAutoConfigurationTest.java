@@ -26,6 +26,7 @@ import org.springframework.web.context.WebApplicationContext;
 class ConfigStreamEndpointAutoConfigurationTest {
 
     private static final String SECRET = "0123456789abcdef-test-secret";
+    private static final String ADMIN = "configstream-admin";
 
     private final WebApplicationContextRunner runner = new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
@@ -80,6 +81,53 @@ class ConfigStreamEndpointAutoConfigurationTest {
             expect(mvc, get("/internal/config/history").param("key", "feature.funds.limit"), status().isUnauthorized());
             assertThat(store.values.get("feature.funds.limit")).isEqualTo(new ConfigValue(PropertyType.INT, 3));
         });
+    }
+
+    @Test
+    void acceptsTheAdminServersTokenWithoutASecret() {
+        runWithEndpoint("configstream.internal.admin-principal=" + ADMIN, (mvc, store) -> {
+            expect(mvc, get("/internal/config").principal(() -> ADMIN), status().isOk());
+            expect(mvc, update("{\"key\":\"feature.funds.limit\",\"value\":\"5\",\"changedBy\":\"alice\"}")
+                    .principal(() -> ADMIN), status().isOk());
+            assertThat(store.values.get("feature.funds.limit")).isEqualTo(new ConfigValue(PropertyType.INT, 5));
+            // No secret is configured, so the header opens nothing
+            expect(mvc, get("/internal/config").header(InternalConfigController.SECRET_HEADER, SECRET),
+                    status().isUnauthorized());
+            expect(mvc, get("/internal/config"), status().isUnauthorized());
+        });
+    }
+
+    @Test
+    void refusesCallersAuthenticatedAsSomeoneElse() {
+        runWithEndpoint("configstream.internal.admin-principal=" + ADMIN, (mvc, store) -> {
+            mvc.perform(update("{\"key\":\"feature.funds.limit\",\"value\":\"5\",\"changedBy\":\"alice\"}")
+                            .principal(() -> "payments"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("The caller is authenticated as 'payments', which isn't this "
+                            + "service's configstream.internal.admin-principal, so it can't use these endpoints."));
+            expect(mvc, get("/internal/config/history").param("key", "feature.funds.limit").principal(() -> "payments"),
+                    status().isForbidden());
+            assertThat(store.values.get("feature.funds.limit")).isEqualTo(new ConfigValue(PropertyType.INT, 3));
+        });
+    }
+
+    @Test
+    void theSecretStillWorksAlongsideTokens() {
+        runner.withPropertyValues("configstream.internal.secret=" + SECRET, "configstream.internal.admin-principal=" + ADMIN)
+                .run(context -> {
+                    MockMvc mvc = MockMvcBuilders.webAppContextSetup(
+                            (WebApplicationContext) context.getSourceApplicationContext()).build();
+                    expect(mvc, authorized(get("/internal/config")), status().isOk());
+                    expect(mvc, get("/internal/config").principal(() -> ADMIN), status().isOk());
+                    expect(mvc, get("/internal/config"), status().isUnauthorized());
+                });
+    }
+
+    @Test
+    void rejectsBlankSettings() {
+        runner.withPropertyValues("configstream.internal.admin-principal= ")
+                .run(context -> assertThat(context).hasFailed()
+                        .getFailure().rootCause().hasMessageContaining("must have a value"));
     }
 
     @Test
@@ -238,7 +286,11 @@ class ConfigStreamEndpointAutoConfigurationTest {
     }
 
     private void runWithEndpoint(EndpointTest test) {
-        runner.withPropertyValues("configstream.internal.secret=" + SECRET).run(context -> {
+        runWithEndpoint("configstream.internal.secret=" + SECRET, test);
+    }
+
+    private void runWithEndpoint(String setting, EndpointTest test) {
+        runner.withPropertyValues(setting).run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(InternalConfigController.class);
             MockMvc mvc = MockMvcBuilders.webAppContextSetup((WebApplicationContext) context.getSourceApplicationContext()).build();
             test.run(mvc, context.getBean(FakeConfigStore.class));

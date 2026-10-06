@@ -109,11 +109,26 @@ public class ConfigStreamProperties {
     public static class Internal {
 
         /**
-         * Shared secret the admin app must send in the {@code X-ConfigStream-Secret} header to call
-         * {@code POST /internal/config/update}. The endpoint does not exist unless this is set.
-         * At least 16 characters.
+         * Shared secret the admin app may send in the {@code X-ConfigStream-Secret} header to call the
+         * {@code /internal/config} endpoints. At least 16 characters. The endpoints do not exist unless this or
+         * {@code admin-principal} is set.
          */
         private String secret;
+
+        /**
+         * Identity of the admin server's token, e.g. {@code configstream-admin}: callers authenticated by this
+         * application (normally an OAuth2 resource server protecting {@code /internal/config/**}) may call the
+         * endpoints only if their principal name equals this. Others get 403.
+         */
+        private String adminPrincipal;
+
+        public String getAdminPrincipal() {
+            return adminPrincipal;
+        }
+
+        public void setAdminPrincipal(String adminPrincipal) {
+            this.adminPrincipal = adminPrincipal;
+        }
 
         public String getSecret() {
             return secret;

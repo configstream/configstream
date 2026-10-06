@@ -12,9 +12,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -51,7 +53,7 @@ public class ServiceClient {
     public Map<String, ConfigEntry> currentConfig(String serviceName) {
         Map<String, ConfigEntry> properties = call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config")
-                .header(SECRET_HEADER, secret)
+                .headers(secretHeader(secret))
                 .retrieve()
                 .body(new ParameterizedTypeReference<Map<String, ConfigEntry>>() {}));
         return new TreeMap<>(properties);
@@ -61,7 +63,7 @@ public class ServiceClient {
     public List<ConfigHistoryEntry> history(String serviceName, String key, int limit) {
         return call(serviceName, (baseUrl, secret) -> http.get()
                 .uri(baseUrl + "/internal/config/history?key={key}&limit={limit}", key, limit)
-                .header(SECRET_HEADER, secret)
+                .headers(secretHeader(secret))
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<ConfigHistoryEntry>>() {}));
     }
@@ -89,7 +91,7 @@ public class ServiceClient {
     private Optional<ConfigHistoryEntry> write(String serviceName, String path, Object body) {
         return Optional.ofNullable(call(serviceName, true, (baseUrl, secret) -> http.post()
                 .uri(baseUrl + path)
-                .header(SECRET_HEADER, secret)
+                .headers(secretHeader(secret))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
@@ -108,10 +110,12 @@ public class ServiceClient {
     private <T> T call(String serviceName, boolean isWrite, BiFunction<String, String, T> request) {
         ServiceSummary service = registry.service(serviceName)
                 .orElseThrow(() -> new ServiceCallException("No service named '" + serviceName + "' is registered."));
-        String secret = properties.secretFor(serviceName);
-        if (secret == null || secret.isBlank()) {
+        String configured = properties.secretFor(serviceName);
+        String secret = configured == null || configured.isBlank() ? null : configured;
+        if (secret == null && !properties.usesTokens()) {
             throw new ServiceCallException("No secret configured for '" + serviceName + "'. Set configstream.admin-server.service-secrets."
-                    + serviceName + " (or configstream.admin-server.default-service-secret) to its configstream.internal.secret.");
+                    + serviceName + " (or configstream.admin-server.default-service-secret) to its configstream.internal.secret, "
+                    + "or call services with tokens (configstream.admin-server.oauth2-client).");
         }
         List<String> baseUrls = service.activeInstances().stream()
                 .map(RegisteredInstance::baseUrl)
@@ -126,15 +130,21 @@ public class ServiceClient {
             try {
                 return request.apply(baseUrl, secret);
             } catch (HttpClientErrorException e) {
+                // Every instance shares the same credentials, so trying the others won't help
                 if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                    // Every instance shares the secret, so trying the others won't help
-                    throw new ServiceCallException("'" + serviceName + "' rejected the configured secret.", e);
+                    throw new ServiceCallException("'" + serviceName + "' rejected the admin server's "
+                            + credentials(secret) + ".", e);
                 }
                 // The service explains a rejected change, e.g. a value that doesn't fit the property's type
                 String reason = errorMessage(e);
+                if (e.getStatusCode() == HttpStatus.FORBIDDEN && reason == null) {
+                    throw new ServiceCallException("'" + serviceName + "' refused the admin server (403). Check that "
+                            + "the service lets the admin server's token reach /internal/config/**, and that its "
+                            + "configstream.internal.admin-principal is the token's identity.", e);
+                }
                 if (e.getStatusCode() == HttpStatus.NOT_FOUND && reason == null) {
                     throw new ServiceCallException("'" + serviceName + "' does not expose the configstream internal "
-                            + "endpoints. Is configstream.internal.secret set on the service?", e);
+                            + "endpoints. Is configstream.internal.secret or admin-principal set on the service?", e);
                 }
                 // Any other 4xx: the request itself was rejected, and every instance would reject it too
                 throw new ServiceCallException("'" + serviceName + "' rejected the request: " + (reason != null ? reason
@@ -151,6 +161,22 @@ public class ServiceClient {
         }
         throw new ServiceCallException("Could not reach any instance of '" + serviceName + "' ("
                 + baseUrls.size() + " tried): " + lastFailure.getMessage(), lastFailure);
+    }
+
+    /** Adds the shared secret, if there is one; with tokens, the request interceptor adds the token. */
+    private static Consumer<HttpHeaders> secretHeader(String secret) {
+        return headers -> {
+            if (secret != null) {
+                headers.set(SECRET_HEADER, secret);
+            }
+        };
+    }
+
+    private String credentials(String secret) {
+        if (properties.usesTokens()) {
+            return secret == null ? "token" : "token and secret";
+        }
+        return "secret";
     }
 
     /** True if the connection itself failed, so the instance cannot have acted on the request. */

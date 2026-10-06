@@ -430,6 +430,14 @@ Login for people is up to the application hosting the admin server, typically Sp
 identity provider. Once someone is signed in, the admin server shows their name in the header and records every
 change under it: the "Your name" field disappears, and a submitted name is ignored, so the history can be trusted. Set
 `configstream.admin-server.dashboard.logout-path` (e.g. `/logout`) to add a "Sign out" button, which posts there.
+Without a login, the header says "No login: trusted networks only".
+
+The name shown and recorded is the login's principal name. With single sign-on (OpenID Connect), Spring Security uses
+the `sub` claim by default, which is often an unreadable ID; pick a readable claim instead:
+
+```yaml
+spring.security.oauth2.client.provider.<your-provider>.user-name-attribute: preferred_username   # or email
+```
 
 With Spring Security, permit `/api/instances/**` (services authenticate there with tokens, not a login) and exclude it
 from CSRF protection; the dashboard's forms already carry the CSRF token. `samples/demo-admin` shows a minimal setup.

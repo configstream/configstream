@@ -82,23 +82,23 @@ the database) and every running instance sees the new value within about a secon
 
 ## How it works
 
-```mermaid
-flowchart LR
-    person([Person]) -->|edits a value| admin[Admin server]
-    admin -->|asks one instance to write it| orders1
-    subgraph orders [orders service]
-        orders1[instance 1]
-        orders2[instance 2]
-    end
-    orders1 -->|writes, with history| db[(MongoDB<br/>orders_config)]
-    db -->|change stream| orders1
-    db -->|change stream| orders2
-```
+![How configstream works: a person edits a value in the admin server, which sends it to one instance; that instance writes it to MongoDB with history, and a change stream pushes it to every instance in about a second](docs/diagrams/architecture.png)
 
 Each service keeps its properties in its own MongoDB collection and holds them in memory. When a value changes, MongoDB
 pushes the change to every instance through a change stream, so reads never touch the database and every instance
 updates within about a second. The admin server is optional: it lists services, shows values and history, and sends
 changes to a service, which writes them with its own database credentials.
+
+### Low-level design
+
+The main classes of a service instance and of the admin server: how a value is read (from memory), changed (through
+one instance, in a transaction with its history) and pushed (change stream), and how the two sides authenticate each
+other with tokens.
+
+[![Low-level design: classes of a service instance and of the admin server, MongoDB collections, and the identity provider](docs/diagrams/low-level-design.png)](docs/diagrams/low-level-design.png)
+
+Both diagrams are drawn from the HTML files next to them in [`docs/diagrams`](docs/diagrams); edit those and re-export
+the PNGs when the design changes.
 
 ## Modules
 

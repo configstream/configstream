@@ -1,0 +1,175 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#fff}
+  svg{display:block;font-family:"Segoe UI",Arial,sans-serif}
+  .t{fill:#14201f}.m{fill:#5b6b69}.a{fill:#0a6f6a}.b{fill:#2f4f6f}
+  .box{fill:#fff;stroke:#14201f;stroke-width:1.8}
+  .h{font-size:16px;font-weight:700;fill:#14201f}
+  .s{font-size:14px;fill:#5b6b69}
+  .mono{font-family:Consolas,monospace}
+  .cap{font-size:12px;font-weight:700;letter-spacing:1.5px;fill:#7a8a88}
+  .ln{fill:none;stroke:#14201f;stroke-width:2}
+  .bus{fill:none;stroke:#0a6f6a;stroke-width:3}
+</style></head><body>
+<svg width="2000" height="1220" viewBox="0 0 2000 1220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#14201f"/></marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0a6f6a"/></marker>
+  </defs>
+  <rect width="2000" height="1220" fill="#fbfdfc"/>
+  <rect width="2000" height="8" fill="#0a6f6a"/>
+
+  <text x="40" y="62" font-size="34" font-weight="700" class="t">configstream <tspan class="m" font-weight="400">· low-level design (0.2.0)</tspan></text>
+  <text x="40" y="96" font-size="18" class="m">Main classes of a service instance and of the admin server, and how a value is read, changed and pushed.</text>
+
+  <!-- ================= SERVICE ================= -->
+  <rect x="20" y="130" width="1060" height="805" rx="14" fill="#eef6f5" stroke="#0a6f6a" stroke-width="2"/>
+  <text x="40" y="160" font-size="20" font-weight="700" class="a">orders service, each instance</text>
+  <text x="1060" y="160" font-size="14" text-anchor="end" class="m mono">configstream-spring-boot-starter (+ -api, -mongo, -processor)</text>
+
+  <!-- R1 compile time -->
+  <text x="70" y="192" class="cap">COMPILE TIME</text>
+  <rect class="box" x="70" y="200" width="290" height="80" rx="8"/>
+  <text x="85" y="232" class="h mono">configstream.yml</text><text x="85" y="258" class="s mono">+ configstream-&lt;env&gt;.yml</text>
+  <rect class="box" x="400" y="200" width="290" height="80" rx="8"/>
+  <text x="415" y="232" class="h">ConfigStreamManifestProcessor</text><text x="415" y="258" class="s">annotation processor, checks the files</text>
+  <rect class="box" x="730" y="200" width="320" height="80" rx="8"/>
+  <text x="745" y="232" class="h">Generated constants</text><text x="745" y="258" class="s mono">Limits.MAX, Feature.X_ENABLED</text>
+  <line class="ln" x1="360" y1="240" x2="398" y2="240" marker-end="url(#ar)"/>
+  <line class="ln" x1="690" y1="240" x2="728" y2="240" marker-end="url(#ar)"/>
+
+  <!-- R2 read path -->
+  <text x="70" y="317" class="cap">READ PATH</text>
+  <rect class="box" x="70" y="325" width="290" height="80" rx="8"/>
+  <text x="85" y="357" class="h">Your code</text><text x="85" y="383" class="s mono">config.get(Limits.MAX)</text>
+  <rect class="box" x="400" y="325" width="290" height="80" rx="8"/>
+  <text x="415" y="357" class="h">ConfigService</text><text x="415" y="383" class="s">typed reads, never a DB call</text>
+  <rect class="box" x="730" y="325" width="320" height="80" rx="8" style="fill:#e2f1ef"/>
+  <text x="745" y="357" class="h">ConfigCache</text><text x="745" y="383" class="s">all values in memory, thread-safe</text>
+  <line class="ln" x1="360" y1="365" x2="398" y2="365" marker-end="url(#ar)"/>
+  <line class="ln" x1="690" y1="365" x2="728" y2="365" marker-end="url(#ar)"/>
+
+  <!-- R3 change path -->
+  <text x="70" y="442" class="cap">CHANGE PATH (PUSH)</text>
+  <rect class="box" x="70" y="450" width="290" height="80" rx="8"/>
+  <text x="85" y="482" class="h">MongoChangeStreamSource</text><text x="85" y="508" class="s">watches · resumes · reloads</text>
+  <rect class="box" x="400" y="450" width="290" height="80" rx="8"/>
+  <text x="415" y="482" class="h">EventPublishingListener</text><text x="415" y="508" class="s">applies each change in order</text>
+  <rect class="box" x="730" y="450" width="320" height="80" rx="8"/>
+  <text x="745" y="482" class="h">ConfigChangedEvent</text><text x="745" y="508" class="s">to your @EventListener methods</text>
+  <line class="ln" x1="360" y1="490" x2="398" y2="490" marker-end="url(#ar)"/>
+  <line class="ln" x1="690" y1="505" x2="728" y2="505" marker-end="url(#ar)"/>
+  <path class="ln" d="M690,468 H710 V412 H790 V408" marker-end="url(#ar)"/>
+  <text x="716" y="430" font-size="13" class="m">updates</text>
+
+  <!-- R4 startup -->
+  <text x="70" y="567" class="cap">STARTUP</text>
+  <rect class="box" x="70" y="575" width="290" height="80" rx="8"/>
+  <text x="85" y="607" class="h">ManifestSync</text><text x="85" y="633" class="s">creates missing properties only</text>
+  <rect class="box" x="400" y="575" width="290" height="80" rx="8"/>
+  <text x="415" y="607" class="h">ManifestLoader</text><text x="415" y="633" class="s">reads the manifest files</text>
+  <rect class="box" x="730" y="575" width="320" height="80" rx="8"/>
+  <text x="745" y="607" class="h">ConfigStreamHealthIndicator</text><text x="745" y="633" class="s mono">/actuator/health</text>
+  <line class="ln" x1="400" y1="615" x2="362" y2="615" marker-end="url(#ar)"/>
+
+  <!-- R5 write path -->
+  <text x="70" y="692" class="cap">WRITE PATH (FROM THE ADMIN SERVER)</text>
+  <rect class="box" x="70" y="700" width="290" height="80" rx="8"/>
+  <text x="85" y="732" class="h">MongoConfigWriter</text><text x="85" y="758" class="s">value + history, one transaction</text>
+  <rect class="box" x="400" y="700" width="650" height="80" rx="8"/>
+  <text x="415" y="732" class="h">InternalConfigController <tspan class="mono" font-weight="400">/internal/config</tspan></text>
+  <text x="415" y="758" class="s">GET · update · delete · history; accepts the admin's token (admin-principal) or secret</text>
+  <line class="ln" x1="400" y1="740" x2="362" y2="740" marker-end="url(#ar)"/>
+
+  <!-- R6 registration -->
+  <text x="70" y="817" class="cap">WIRING AND REGISTRATION</text>
+  <rect class="box" x="70" y="825" width="290" height="80" rx="8"/>
+  <text x="85" y="857" class="h">ConfigStreamAutoConfiguration</text><text x="85" y="883" class="s">wires it all, uses your MongoClient</text>
+  <rect class="box" x="400" y="825" width="650" height="80" rx="8"/>
+  <text x="415" y="857" class="h">AdminRegistration + AdminTokens</text>
+  <text x="415" y="883" class="s">register · heartbeat every 15 s · deregister, with its declared properties and an OAuth2 token</text>
+
+  <!-- MongoDB access bus -->
+  <path class="bus" d="M70,490 H46 V1000"/>
+  <path class="bus" d="M70,615 H46"/>
+  <path class="bus" d="M70,740 H46"/>
+
+  <!-- ================= ADMIN SERVER ================= -->
+  <rect x="1180" y="130" width="790" height="805" rx="14" fill="#eef2f7" stroke="#2f4f6f" stroke-width="2"/>
+  <text x="1200" y="160" font-size="20" font-weight="700" class="b">Admin server, your Spring Boot app</text>
+  <text x="1950" y="160" font-size="14" text-anchor="end" class="m mono">@EnableConfigStreamAdminServer</text>
+
+  <text x="1210" y="192" class="cap">PEOPLE</text>
+  <rect class="box" x="1210" y="200" width="730" height="80" rx="8"/>
+  <text x="1225" y="232" class="h">Host application's login (Spring Security, SSO)</text>
+  <text x="1225" y="258" class="s">the signed-in person's name is shown in the header and recorded as changedBy</text>
+
+  <text x="1210" y="317" class="cap">UI</text>
+  <rect class="box" x="1210" y="325" width="345" height="80" rx="8"/>
+  <text x="1225" y="357" class="h">DashboardController</text><text x="1225" y="383" class="s">services, instances, values, history</text>
+  <rect class="box" x="1595" y="325" width="345" height="80" rx="8"/>
+  <text x="1610" y="357" class="h">ConfigEditController</text><text x="1610" y="383" class="s">edit → review → apply · delete orphans</text>
+  <line class="ln" x1="1575" y1="280" x2="1575" y2="323" marker-end="url(#ar)"/>
+
+  <text x="1210" y="442" class="cap">PERMISSIONS</text>
+  <rect class="box" x="1210" y="450" width="730" height="80" rx="8"/>
+  <text x="1225" y="482" class="h">AdminAccess → ConfigStreamAdminPermissions</text>
+  <text x="1225" y="508" class="s">default TeamPermissions: a login group must match the service's team; checked again on every change</text>
+  <line class="ln" x1="1382" y1="405" x2="1382" y2="448" marker-end="url(#ar)"/>
+  <line class="ln" x1="1767" y1="405" x2="1767" y2="448" marker-end="url(#ar)"/>
+
+  <text x="1210" y="567" class="cap">CALLS TO SERVICES</text>
+  <rect class="box" x="1210" y="575" width="345" height="80" rx="8"/>
+  <text x="1225" y="607" class="h">ServiceClient</text><text x="1225" y="633" class="s">tries the active instances in turn</text>
+  <rect class="box" x="1595" y="575" width="345" height="80" rx="8"/>
+  <text x="1610" y="607" class="h">ServiceTokens</text><text x="1610" y="633" class="s">OAuth2 client-credentials token</text>
+  <line class="ln" x1="1382" y1="530" x2="1382" y2="573" marker-end="url(#ar)"/>
+  <line class="ln" x1="1595" y1="615" x2="1557" y2="615" marker-end="url(#ar)"/>
+  <text x="1560" y="605" font-size="13" class="m">adds</text>
+
+  <text x="1210" y="692" class="cap">SERVICE REGISTRATION</text>
+  <rect class="box" x="1210" y="700" width="345" height="80" rx="8"/>
+  <text x="1225" y="732" class="h">RegistrationController</text><text x="1225" y="758" class="s mono">/api/instances</text>
+  <rect class="box" x="1595" y="700" width="345" height="80" rx="8"/>
+  <text x="1610" y="732" class="h">RegistrationGuard</text><text x="1610" y="758" class="s">token's name must equal the service</text>
+  <line class="ln" x1="1555" y1="740" x2="1593" y2="740" marker-end="url(#ar)"/>
+
+  <text x="1210" y="817" class="cap">REGISTRY</text>
+  <rect class="box" x="1210" y="825" width="730" height="80" rx="8"/>
+  <text x="1225" y="857" class="h">InstanceRegistry</text>
+  <text x="1225" y="883" class="s">in memory · an instance is active while heartbeats arrive (45 s lease) · removed after 10 min</text>
+  <line class="ln" x1="1382" y1="780" x2="1382" y2="823" marker-end="url(#ar)"/>
+
+  <!-- ================= BETWEEN THEM ================= -->
+  <path class="ln" d="M1210,615 H1125 V725 H1052" marker-end="url(#ar)" stroke-width="2.6"/>
+  <path class="ln" d="M1050,865 H1150 V755 H1208" marker-end="url(#ar)" stroke-width="2.6"/>
+  <rect x="1088" y="640" width="74" height="22" rx="11" fill="#14201f"/><text x="1125" y="656" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">HTTPS</text>
+  <rect x="1113" y="800" width="74" height="22" rx="11" fill="#14201f"/><text x="1150" y="816" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">HTTPS</text>
+
+  <!-- ================= BOTTOM ROW ================= -->
+  <!-- MongoDB -->
+  <path d="M30,1008 V1160 A335,22 0 0 0 700,1160 V1008" fill="#fff" stroke="#14201f" stroke-width="2"/>
+  <ellipse cx="365" cy="1008" rx="335" ry="22" fill="#e2f1ef" stroke="#14201f" stroke-width="2"/>
+  <text x="365" y="1060" font-size="20" font-weight="700" text-anchor="middle" class="t">MongoDB (replica set)</text>
+  <text x="60" y="1094" font-size="14" class="t mono" style="white-space:pre">orders_config          { _id: key, type, value, version }</text>
+  <text x="60" y="1118" font-size="14" class="t mono" style="white-space:pre">orders_config_history  { key, version, oldValue, newValue,</text>
+  <text x="60" y="1140" font-size="14" class="t mono" style="white-space:pre">                         changedBy, changedAt, comment }</text>
+
+  <!-- Legend -->
+  <rect x="740" y="990" width="400" height="190" rx="10" fill="#fff" stroke="#c9d4d2"/>
+  <text x="760" y="1018" class="cap">LEGEND</text>
+  <line class="ln" x1="760" y1="1046" x2="810" y2="1046" marker-end="url(#ar)"/><text x="822" y="1051" font-size="15" class="t">call or data flow</text>
+  <line class="bus" x1="760" y1="1078" x2="810" y2="1078"/><text x="822" y="1083" font-size="15" class="t">MongoDB access (your app's MongoClient)</text>
+  <rect x="760" y="1098" width="50" height="22" rx="4" fill="#e2f1ef" stroke="#14201f" stroke-width="1.5"/><text x="822" y="1115" font-size="15" class="t">in-memory state</text>
+  <text x="760" y="1152" font-size="13" class="m">Change streams push every write to every instance:</text>
+  <text x="760" y="1170" font-size="13" class="m">no polling, no message broker, about 1 s end to end.</text>
+
+  <!-- Identity provider -->
+  <rect x="1180" y="990" width="790" height="110" rx="10" fill="#fff" stroke="#2f4f6f" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="1200" y="1024" font-size="18" font-weight="700" class="b">Your identity provider (Okta, Azure AD, Keycloak…)</text>
+  <text x="1200" y="1052" font-size="14" class="t">issues client-credentials tokens: to each service (AdminTokens) and to the admin server (ServiceTokens).</text>
+  <text x="1200" y="1074" font-size="14" class="t">Each side validates the other's token with Spring Security; no shared secrets needed.</text>
+
+  <text x="1970" y="1168" font-size="18" text-anchor="end" class="m">github.com/configstream/configstream</text>
+</svg>
+</body></html>

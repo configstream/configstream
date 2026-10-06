@@ -34,6 +34,12 @@
             <artifactId>spring-security-core</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Optional: tokens for calling services, in host apps that use Spring Security's OAuth2 client -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-client</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>

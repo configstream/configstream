@@ -28,6 +28,7 @@ import org.springframework.web.client.RestClient;
 class ServiceClientTest {
 
     private static final String SECRET = "0123456789abcdef-secret";
+    private static final String ADMIN_TOKEN = "Bearer token-for-configstream-admin";
 
     private final ConfigStreamAdminProperties properties = new ConfigStreamAdminProperties();
     private final InstanceRegistry registry = new InstanceRegistry(properties, Clock.systemUTC());
@@ -92,7 +93,7 @@ class ServiceClientTest {
 
         assertThatThrownBy(() -> client.currentConfig("orders"))
                 .isInstanceOf(ServiceCallException.class)
-                .hasMessageContaining("rejected the configured secret");
+                .hasMessageContaining("rejected the admin server's secret");
     }
 
     @Test
@@ -213,6 +214,46 @@ class ServiceClientTest {
     }
 
     @Test
+    void withTokensNoSecretIsNeededOrSent() throws IOException {
+        properties.setOauth2Client("configstream-admin");
+        // Stands in for the OAuth2 interceptor the auto-configuration adds to the builder
+        client = new ServiceClient(RestClient.builder().requestInterceptor((request, body, execution) -> {
+            request.getHeaders().set("Authorization", ADMIN_TOKEN);
+            return execution.execute(request, body);
+        }), registry, properties);
+        int port = fakeService(200, "{}");
+        registry.register(new InstanceRegistration("billing", "b-1", "localhost", port, null, null));
+
+        assertThat(client.currentConfig("billing")).isEmpty();
+        assertThat(requests).singleElement().satisfies(r -> {
+            assertThat(r.secret()).isNull();
+            assertThat(r.authorization()).isEqualTo(ADMIN_TOKEN);
+        });
+    }
+
+    @Test
+    void reportsRejectedToken() throws IOException {
+        properties.setOauth2Client("configstream-admin");
+        int port = fakeService(401, "");
+        registry.register(new InstanceRegistration("billing", "b-1", "localhost", port, null, null));
+
+        assertThatThrownBy(() -> client.currentConfig("billing"))
+                .isInstanceOf(ServiceCallException.class)
+                .hasMessage("'billing' rejected the admin server's token.");
+    }
+
+    @Test
+    void explainsARefusalWithoutAReason() throws IOException {
+        int port = fakeService(403, "");
+        registry.register(new InstanceRegistration("orders", "o-1", "localhost", port, null, null));
+
+        assertThatThrownBy(() -> client.currentConfig("orders"))
+                .isInstanceOf(ServiceCallException.class)
+                .hasMessageContaining("'orders' refused the admin server (403)")
+                .hasMessageContaining("configstream.internal.admin-principal");
+    }
+
+    @Test
     void defaultSecretCoversUnlistedServices() throws IOException {
         properties.setDefaultServiceSecret(SECRET);
         int port = fakeService(200, "{}");
@@ -231,15 +272,17 @@ class ServiceClientTest {
     }
 
     /**
-     * Answers every request with the given status and body, but only if the secret header matches.
-     * Records every request it receives in {@link #requests}.
+     * Answers every request with the given status and body, but only if the secret header or the admin's token
+     * matches. Records every request it receives in {@link #requests}.
      */
     private int fakeService(int status, String body) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/internal/config", exchange -> {
+            String secret = exchange.getRequestHeaders().getFirst(ServiceClient.SECRET_HEADER);
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
             requests.add(new Request(exchange.getRequestURI().getPath(),
-                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
-            boolean authorized = SECRET.equals(exchange.getRequestHeaders().getFirst(ServiceClient.SECRET_HEADER));
+                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8), secret, authorization));
+            boolean authorized = SECRET.equals(secret) || ADMIN_TOKEN.equals(authorization);
             int code = authorized ? status : 401;
             byte[] bytes = (authorized ? body : "").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -254,7 +297,7 @@ class ServiceClientTest {
         return server.getAddress().getPort();
     }
 
-    private record Request(String path, String body) {
+    private record Request(String path, String body, String secret, String authorization) {
     }
 
     private static int unusedPort() throws IOException {

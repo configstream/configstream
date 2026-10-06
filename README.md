@@ -241,8 +241,10 @@ configstream:
 ```
 
 - **`internal.secret`** enables the internal endpoints, through which the admin app changes config using *this
-  service's* database credentials. Callers must send the secret in the `X-ConfigStream-Secret` header. Without a
-  secret the endpoints do not exist. Serve them over HTTPS only.
+  service's* database credentials. Callers must send the secret in the `X-ConfigStream-Secret` header. Instead of
+  (or as well as) a secret, the admin server can call with a token: see
+  [Securing calls to services](#securing-calls-to-services). Without either the endpoints do not exist. Serve them
+  over HTTPS only.
   - `POST /internal/config/update` with `{"key": "...", "value": "...", "type": "int", "changedBy": "alice",
     "comment": "optional"}` (`type` optional) sets an existing property and returns the recorded history entry (200),
     or 204 if the value was already set. It never creates a property (404), and rejects a value that doesn't fit the
@@ -264,8 +266,8 @@ configstream:
   continue; restore its old value from the history.
 - **Blue-green and rolling deploys:** give every version the same `spring.application.name`, and let every instance
   register with the admin server, so properties still used by the old version aren't shown as orphans.
-- If your app uses **Spring Security**, permit `/internal/config/**` and exclude it from CSRF protection; the shared
-  secret is what authenticates these calls.
+- If your app uses **Spring Security** with the shared secret, permit `/internal/config/**` and exclude it from CSRF
+  protection; the secret is what authenticates these calls.
 
 ### When the connection to MongoDB fails
 
@@ -322,7 +324,7 @@ before it is applied, and a delete is confirmed on its own page, which warns tha
 the property creates it again with that version's initial value. The admin app never touches a service's database.
 It sends the change to any healthy
 instance of the service, which writes it with its own credentials, and every instance picks it up within about a
-second. Failures (no instance reachable, secret rejected, request invalid) are shown on the page. If an instance
+second. Failures (no instance reachable, secret or token rejected, request invalid) are shown on the page. If an instance
 received the change but did not confirm it (a timeout or server error), the admin app does not retry on another
 instance. It tells you to check the key's history first, because the change may already have been applied.
 
@@ -380,6 +382,47 @@ the service's `spring.application.name`, so a token for `orders` can't register,
 **Without tokens**, the admin server accepts registrations only from its own machine ("local mode"), so trying
 configstream on a laptop needs no setup, and a forgotten setting never leaves a real server open. To accept anyone on
 a network you fully trust, set `configstream.admin-server.allow-unauthenticated-registration: true`.
+
+### Securing calls to services
+
+The admin server reads and changes a service's config by calling that service's `/internal/config` endpoints. It can
+prove who it is with a shared secret per service (`service-secrets` above) or, without any shared secret, with its own
+token from your identity provider, the same client-credentials flow services use to register.
+
+**On the admin server** (with `spring-boot-starter-oauth2-client`):
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          configstream:
+            client-id: configstream-admin
+            client-secret: ${ADMIN_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          configstream:
+            token-uri: https://login.example.com/oauth2/token
+configstream:
+  admin-server:
+    oauth2-client: configstream     # call services with these tokens; service-secrets become optional
+```
+
+One token is fetched, cached and renewed for calls to every service.
+
+**On each service**, your application validates the token, for example with `spring-boot-starter-oauth2-resource-server`
+requiring authentication on `/internal/config/**`, and configstream accepts only the admin server's identity:
+
+```yaml
+configstream:
+  internal:
+    admin-principal: configstream-admin   # the token's principal name (the `sub` claim by default)
+```
+
+Callers authenticated as anyone else get 403, and a person signed in to your app can't call these endpoints. If your
+provider puts the client ID in another claim, set `spring.security.oauth2.resourceserver.jwt.principal-claim-name`.
+`internal.secret` keeps working alongside `admin-principal`, so you can switch services over one at a time.
 
 ### Signing in people
 

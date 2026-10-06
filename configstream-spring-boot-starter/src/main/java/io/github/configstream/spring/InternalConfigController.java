@@ -9,6 +9,7 @@ import io.github.configstream.api.PropertyNotFoundException;
 import io.github.configstream.api.PropertyType;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -32,7 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
  * property this instance declares can't be deleted. Rejected changes return 4xx with {@code {"error": "..."}}, a
  * message meant for the person who made the change.
  *
- * <p>Guarded by a shared secret for now; OIDC replaces it once the admin app exists.
+ * <p>Only the admin server may call them: either authenticated by the host application (normally with an OAuth2
+ * token) as {@code configstream.internal.admin-principal}, or sending {@code configstream.internal.secret} in the
+ * {@code X-ConfigStream-Secret} header. Anyone else gets 401, or 403 if authenticated as someone else.
  */
 @RestController
 @RequestMapping("/internal/config")
@@ -48,20 +51,25 @@ class InternalConfigController {
     private final ConfigWriter writer;
     private final ConfigHistory history;
     private final byte[] secret;
+    private final String adminPrincipal;
 
-    InternalConfigController(ConfigService config, ConfigWriter writer, ConfigHistory history, String secret) {
+    /** {@code secret} and {@code adminPrincipal} may each be null (that way of calling is off), but not both. */
+    InternalConfigController(ConfigService config, ConfigWriter writer, ConfigHistory history, String secret,
+            String adminPrincipal) {
         this.config = config;
         this.writer = writer;
         this.history = history;
-        this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.secret = secret == null ? null : secret.getBytes(StandardCharsets.UTF_8);
+        this.adminPrincipal = adminPrincipal;
     }
 
     /** Every property as this instance currently sees it, sorted by key: {@code {"limits.max": {"type": "int", "value": "20"}}}. */
     @GetMapping
-    ResponseEntity<Map<String, PropertyView>> current(
-            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret) {
-        if (!secretMatches(providedSecret)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    ResponseEntity<?> current(
+            Principal caller, @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret) {
+        ResponseEntity<ErrorResponse> refusal = refusal(caller, providedSecret);
+        if (refusal != null) {
+            return refusal;
         }
         Map<String, PropertyView> values = new TreeMap<>();
         config.values().forEach((key, value) -> values.put(key, new PropertyView(value.type().typeName(), value.text())));
@@ -78,10 +86,11 @@ class InternalConfigController {
      */
     @PostMapping("/update")
     ResponseEntity<?> update(
-            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
+            Principal caller, @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
             @RequestBody(required = false) UpdateRequest request) {
-        if (!secretMatches(providedSecret)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ResponseEntity<ErrorResponse> refusal = refusal(caller, providedSecret);
+        if (refusal != null) {
+            return refusal;
         }
         if (request == null || isBlank(request.key()) || request.value() == null || isBlank(request.changedBy())) {
             return error(HttpStatus.BAD_REQUEST, "key, value and changedBy are required.");
@@ -109,10 +118,11 @@ class InternalConfigController {
      */
     @PostMapping("/delete")
     ResponseEntity<?> delete(
-            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
+            Principal caller, @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
             @RequestBody(required = false) DeleteRequest request) {
-        if (!secretMatches(providedSecret)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ResponseEntity<ErrorResponse> refusal = refusal(caller, providedSecret);
+        if (refusal != null) {
+            return refusal;
         }
         if (request == null || isBlank(request.key()) || isBlank(request.changedBy())) {
             return error(HttpStatus.BAD_REQUEST, "key and changedBy are required.");
@@ -132,12 +142,13 @@ class InternalConfigController {
 
     /** Changes to one property, newest first. {@code limit} defaults to 50 and is capped at 500. */
     @GetMapping("/history")
-    ResponseEntity<List<ConfigHistoryEntry>> history(
-            @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
+    ResponseEntity<?> history(
+            Principal caller, @RequestHeader(name = SECRET_HEADER, required = false) String providedSecret,
             @RequestParam(required = false) String key,
             @RequestParam(required = false) Integer limit) {
-        if (!secretMatches(providedSecret)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ResponseEntity<ErrorResponse> refusal = refusal(caller, providedSecret);
+        if (refusal != null) {
+            return refusal;
         }
         if (isBlank(key) || (limit != null && limit <= 0)) {
             return ResponseEntity.badRequest().build();
@@ -146,9 +157,25 @@ class InternalConfigController {
         return ResponseEntity.ok(history.history(key, effectiveLimit));
     }
 
+    /** @return why the caller is refused, or {@code null} if it is the admin server */
+    private ResponseEntity<ErrorResponse> refusal(Principal caller, String providedSecret) {
+        if (adminPrincipal != null && caller != null && adminPrincipal.equals(caller.getName())) {
+            return null;
+        }
+        if (secretMatches(providedSecret)) {
+            return null;
+        }
+        if (adminPrincipal != null && caller != null) {
+            return error(HttpStatus.FORBIDDEN, "The caller is authenticated as '" + caller.getName() + "', which isn't "
+                    + "this service's configstream.internal.admin-principal, so it can't use these endpoints.");
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
     private boolean secretMatches(String provided) {
         // Constant-time comparison so response timing doesn't reveal how much of the secret matched
-        return provided != null && MessageDigest.isEqual(provided.getBytes(StandardCharsets.UTF_8), secret);
+        return secret != null && provided != null
+                && MessageDigest.isEqual(provided.getBytes(StandardCharsets.UTF_8), secret);
     }
 
     private static ResponseEntity<ErrorResponse> error(HttpStatus status, String message) {

@@ -41,6 +41,8 @@ The first start builds the sample apps, which takes a few minutes. Then:
 3. Open **orders**, edit `limits.max`, review and apply.
 4. Refresh both `/demo` pages: each instance shows the new value within about a second, without a restart.
 
+The [walkthrough](docs/walkthrough.md) shows each of these steps with screenshots.
+
 Stop with Ctrl+C, and remove everything with `docker compose -f quickstart/compose.yml down -v`. The passwords and
 secrets in the quick start are public, for trying configstream locally only.
 

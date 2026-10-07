@@ -154,6 +154,31 @@
 
     <profiles>
         <!--
+          JDK 23+ copies about 4 MB of web fonts into every javadoc jar, which made a release ~21 MB instead of ~1 MB
+          and counts against Maven Central's monthly release-size limit. Older JDKs don't know the option.
+        -->
+        <profile>
+            <id>javadoc-no-fonts</id>
+            <activation>
+                <jdk>[23,)</jdk>
+            </activation>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-javadoc-plugin</artifactId>
+                            <configuration>
+                                <additionalOptions>
+                                    <additionalOption>--no-fonts</additionalOption>
+                                </additionalOptions>
+                            </configuration>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+            </build>
+        </profile>
+        <!--
           Publishing to Maven Central: mvn -P release deploy
           Needs the Central Portal token in ~/.m2/settings.xml (server id "central") and the GPG key's passphrase in
           the MAVEN_GPG_PASSPHRASE environment variable. Uploads are left for review in the portal, not published

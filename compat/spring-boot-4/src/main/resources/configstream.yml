@@ -1,0 +1,8 @@
+properties:
+  - key: feature.x.enabled
+    type: boolean
+    initialValue: false
+  - key: limits.max
+    type: int
+    initialValue: 100
+    description: Maximum items per order

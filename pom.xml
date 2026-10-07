@@ -48,6 +48,8 @@
         <!-- Runnable sample apps for local testing; not published -->
         <module>samples/demo-admin</module>
         <module>samples/demo-service</module>
+        <!-- Runs the starters in Spring Boot 4 applications, end to end; not published -->
+        <module>compat/spring-boot-4</module>
     </modules>
 
     <properties>
@@ -56,6 +58,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <spring-boot.version>3.5.0</spring-boot.version>
+        <!-- The starters also run on Spring Boot 4: they compile against these few Boot 4 classes (optional) and
+             the compat/spring-boot-4 module tests them on Boot 4 end to end -->
+        <spring-boot-4.version>4.1.1</spring-boot-4.version>
         <testcontainers.version>1.21.4</testcontainers.version>
 
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -219,10 +224,11 @@
                             <!-- Review the upload in the portal before it goes public: releases can't be deleted -->
                             <autoPublish>false</autoPublish>
                             <waitUntil>validated</waitUntil>
-                            <!-- The sample apps are for trying configstream locally, not for publishing -->
+                            <!-- The sample apps and the Boot 4 test module are for this repository, not for publishing -->
                             <excludeArtifacts>
                                 <artifact>demo-admin</artifact>
                                 <artifact>demo-service</artifact>
+                                <artifact>compat-spring-boot-4</artifact>
                             </excludeArtifacts>
                         </configuration>
                     </plugin>

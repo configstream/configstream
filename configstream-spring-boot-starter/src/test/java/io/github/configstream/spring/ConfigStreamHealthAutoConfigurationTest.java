@@ -25,14 +25,25 @@ class ConfigStreamHealthAutoConfigurationTest {
     }
 
     @Test
+    void usesSpringBoot4sHealthIndicatorOnSpringBoot4() {
+        // Boot 4 has no org.springframework.boot.actuate.health, only org.springframework.boot.health.contributor
+        runner.withClassLoader(new FilteredClassLoader(ConfigStreamHealthAutoConfiguration.BOOT_3_HEALTH_INDICATOR))
+                .run(context -> assertThat(context).hasNotFailed()
+                        .hasSingleBean(org.springframework.boot.health.contributor.HealthIndicator.class)
+                        .hasSingleBean(ConfigStreamBoot4HealthIndicator.class)
+                        .hasBean("configstreamHealthIndicator"));
+    }
+
+    @Test
     void canBeTurnedOff() {
         runner.withPropertyValues("management.health.configstream.enabled=false")
-                .run(context -> assertThat(context).doesNotHaveBean(HealthIndicator.class));
+                .run(context -> assertThat(context).doesNotHaveBean("configstreamHealthIndicator"));
     }
 
     @Test
     void absentWithoutActuator() {
-        runner.withClassLoader(new FilteredClassLoader(HealthIndicator.class))
+        runner.withClassLoader(new FilteredClassLoader(ConfigStreamHealthAutoConfiguration.BOOT_3_HEALTH_INDICATOR,
+                        ConfigStreamHealthAutoConfiguration.BOOT_4_HEALTH_INDICATOR))
                 .run(context -> assertThat(context).hasNotFailed().doesNotHaveBean("configstreamHealthIndicator"));
     }
 }

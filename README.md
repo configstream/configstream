@@ -6,7 +6,7 @@
 
 > Push-based, restart-free feature flags and configuration for Spring Boot — using the database you already run.
 
-**Status:** 0.2.0. Tested and usable, but its APIs and settings may still change
+**Status:** 0.2.1. Tested and usable, but its APIs and settings may still change
 before 1.0; read the release notes when upgrading.
 
 ## What it does
@@ -55,11 +55,11 @@ local single-node replica set, `docker compose up -d` in this repository).
 <dependency>
     <groupId>io.github.configstream</groupId>
     <artifactId>configstream-spring-boot-starter</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
 </dependency>
 ```
 
-plus `configstream-processor` 0.2.0 as an annotation processor (see
+plus `configstream-processor` 0.2.1 as an annotation processor (see
 [Read them through generated constants](#read-them-through-generated-constants)).
 
 **2. Declare your properties** in `src/main/resources/configstream.yml`:
@@ -308,7 +308,7 @@ Turn any Spring Boot web app into the admin server, the way `@EnableEurekaServer
 <dependency>
     <groupId>io.github.configstream</groupId>
     <artifactId>configstream-admin-spring-boot-starter</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
 </dependency>
 ```
 

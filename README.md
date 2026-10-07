@@ -14,7 +14,9 @@ before 1.0; read the release notes when upgrading.
 `configstream` keeps feature flags and non-secret properties in a database collection/table, loads them into an
 in-memory cache at startup, and updates that cache **instantly across every running instance** when a value changes —
 using the database's native change notifications (MongoDB Change Streams; PostgreSQL `LISTEN/NOTIFY` planned).
-No restarts, no polling, no message broker, no new infrastructure.
+No restarts, no polling and no message broker. MongoDB is the config store, so if your services already use it,
+there is no new infrastructure to run; if they don't, you would be adding MongoDB, and a dedicated config server
+may suit you better. Reads come from memory, so if MongoDB is down, every instance keeps its last known values.
 
 ## Who it's for
 

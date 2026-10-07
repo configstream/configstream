@@ -46,8 +46,8 @@ secrets in the quick start are public, for trying configstream locally only.
 
 ## Quick start
 
-Requirements: Java 17+, Spring Boot 3.x, and a MongoDB **replica set** (MongoDB Atlas always is one; for a local
-single-node replica set, `docker compose up -d` in this repository).
+Requirements: Java 17+, Spring Boot 3.x or 4.x, and a MongoDB **replica set** (MongoDB Atlas always is one; for a
+local single-node replica set, `docker compose up -d` in this repository).
 
 **1. Add the starter and the annotation processor**
 
@@ -126,7 +126,7 @@ spring:
   application:
     name: orders              # configstream's collections: orders_config and orders_config_history
   data:
-    mongodb:
+    mongodb:                  # Spring Boot 3; on Spring Boot 4: spring.mongodb.uri
       uri: mongodb://localhost:27017/orders?replicaSet=rs0&socketTimeoutMS=30000
 
 configstream:
@@ -142,6 +142,12 @@ adds one change stream and borrows one connection from your pool for it.
 
 Both collections are created automatically on the first start; the service's database user needs read and write
 access (MongoDB's `readWrite` role).
+
+**Spring Boot 4:** the same starters work unchanged. Boot 4 renamed the MongoDB settings, so set `spring.mongodb.uri`
+(and `spring.mongodb.database`) instead of `spring.data.mongodb.*`; configstream reads whichever your Boot version uses.
+Boot 4 also creates the `MongoClient` only with `spring-boot-starter-data-mongodb` (or `spring-boot-starter-mongodb`),
+so add one if your service doesn't have it yet. The `compat/spring-boot-4` module tests a service and an admin server
+on Spring Boot 4 end to end.
 
 ### Declare properties in `configstream.yml`
 
@@ -277,7 +283,7 @@ Each instance keeps its last known values while cut off, then reconnects and cat
 - **Dead connections are noticed if your client has a socket timeout.** Set `socketTimeoutMS` (e.g. `30000`) on your
   MongoDB URI: a connection dropped silently by a firewall then fails and is reopened. Without it, the MongoDB driver
   waits indefinitely, and the instance may miss changes for a long time. configstream logs a warning at startup when
-  `spring.data.mongodb.uri` has no `socketTimeoutMS`.
+  the MongoDB URI (`spring.data.mongodb.uri`, or `spring.mongodb.uri` on Spring Boot 4) has no `socketTimeoutMS`.
 - **The watcher can't die silently.** If it stops on an unexpected error, it restarts and reloads all values.
 - **Health check.** With Spring Boot Actuator, `/actuator/health` has a `configstream` entry: UP while connected, still
   UP while reconnecting after a short interruption, and DOWN once cut off longer than `configstream.health.down-after`
@@ -482,7 +488,7 @@ Requirements: JDK 17+, Maven 3.9+, Docker.
 
 ```bash
 docker compose up -d        # local single-node Mongo replica set
-mvn verify                  # build + unit + integration tests
+mvn verify                  # build + unit + integration tests, on Spring Boot 3 and (compat/spring-boot-4) Boot 4
 ```
 
 Integration tests start MongoDB in Docker. Without Docker, point them at any replica set, such as a free Atlas cluster:

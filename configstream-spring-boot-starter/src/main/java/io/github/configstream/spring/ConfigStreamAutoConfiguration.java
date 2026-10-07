@@ -14,12 +14,11 @@ import io.github.configstream.mongo.MongoConfigWriter;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -38,7 +37,9 @@ import org.springframework.core.io.ResourceLoader;
  * <p>Applications can replace the backing store by defining their own {@link ConfigChangeSource}
  * bean (plus a {@link ConfigWriter} if they want the internal update endpoint); MongoDB is then not used at all.
  */
-@AutoConfiguration(after = MongoAutoConfiguration.class)
+// After Spring Boot's MongoDB auto-configuration, which creates the MongoClient: one class name per Boot version
+@AutoConfiguration(afterName = {"org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration",
+        "org.springframework.boot.mongodb.autoconfigure.MongoAutoConfiguration"})
 @ConditionalOnProperty(prefix = "configstream", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(ConfigStreamProperties.class)
 public class ConfigStreamAutoConfiguration {
@@ -81,22 +82,23 @@ public class ConfigStreamAutoConfiguration {
          */
         @Bean
         ConfigStreamDatabase configStreamDatabase(ObjectProvider<MongoClient> clients, ConfigStreamProperties properties,
-                ObjectProvider<MongoProperties> springMongo) {
+                Environment environment, ListableBeanFactory beans, ResourceLoader resources) {
+            SpringMongoSettings spring = SpringMongoSettings.from(environment, beans, resources.getClassLoader());
             MongoClient client = clients.getIfUnique();
             if (client == null) {
                 throw new IllegalStateException("configstream uses your application's MongoClient, but there is no "
-                        + "single MongoClient bean. Add spring-boot-starter-data-mongodb and set spring.data.mongodb.uri "
-                        + "(a replica set, e.g. mongodb://localhost:27017/orders?replicaSet=rs0), define a MongoClient "
-                        + "bean, or set configstream.enabled=false.");
+                        + "single MongoClient bean. Add spring-boot-starter-data-mongodb and set "
+                        + spring.uriProperty() + " (a replica set, e.g. "
+                        + "mongodb://localhost:27017/orders?replicaSet=rs0), define a MongoClient bean, or set "
+                        + "configstream.enabled=false.");
             }
-            MongoProperties spring = springMongo.getIfAvailable();
             String database = properties.getMongo().getDatabase();
-            if ((database == null || database.isBlank()) && spring != null) {
-                database = spring.getMongoClientDatabase();
+            if (database == null || database.isBlank()) {
+                database = spring.clientDatabase();
             }
             if (database == null || database.isBlank()) {
                 throw new IllegalStateException("No config database: set configstream.mongo.database, or "
-                        + "spring.data.mongodb.database.");
+                        + spring.databaseProperty() + ".");
             }
             warnIfNoSocketTimeout(spring);
             return new ConfigStreamDatabase(client, database);
@@ -107,12 +109,11 @@ public class ConfigStreamAutoConfiguration {
          * change stream stuck until the operating system notices. The application's client is shared, so configstream
          * can't change that itself; it can only point it out.
          */
-        private static void warnIfNoSocketTimeout(MongoProperties spring) {
-            String uri = spring == null ? null : spring.getUri();
-            if (uri != null && new ConnectionString(uri).getSocketTimeout() == null) {
-                log.warn("spring.data.mongodb.uri sets no socketTimeoutMS, so if a firewall silently drops the "
-                        + "connection, this instance may miss config changes for a long time before it reconnects. "
-                        + "Consider adding socketTimeoutMS=30000 to the URI.");
+        private static void warnIfNoSocketTimeout(SpringMongoSettings spring) {
+            if (spring.uri() != null && new ConnectionString(spring.uri()).getSocketTimeout() == null) {
+                log.warn("{} sets no socketTimeoutMS, so if a firewall silently drops the connection, this instance "
+                        + "may miss config changes for a long time before it reconnects. Consider adding "
+                        + "socketTimeoutMS=30000 to the URI.", spring.uriProperty());
             }
         }
 
